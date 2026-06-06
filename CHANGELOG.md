@@ -1,8 +1,9 @@
-# Changelog
+### What's changed in v0.1.0
 
-## v0.1.0
+* feat: add aws registry cache stack (by @patrickleet)
 
-- Initial release of the AWS registry cache stack.
-- Combines ECR pull-through cache rules with a scheduled Kubernetes mirror job
-  for unsupported OCI registries.
-- Adds Crossplane package discovery and optional PodIdentity for ECR writes.
+* ci: include pr workflow in main checks (by @patrickleet)
+
+* ci: update crossplane workflows to v3 (by @patrickleet)
+
+
