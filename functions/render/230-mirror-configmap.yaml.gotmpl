@@ -1,0 +1,238 @@
+# code: language=yaml
+#
+# Mirror wrapper configuration and script.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.mirror.render }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $cache.mirror.resourceName }}-config
+  annotations:
+    {{ setResourceNameAnnotation "mirror-config" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: {{ $cache.mirror.resourceName }}
+        namespace: {{ $cache.mirror.namespace }}
+        labels: {{ $cache.labels | toJson }}
+      data:
+        mirror-config.json: {{ $cache.mirror.config | toJson | quote }}
+        mirror.sh: |
+          #!/bin/sh
+          set -eu
+
+          config="${HOPS_REGISTRY_CACHE_CONFIG:-/etc/registry-cache/mirror-config.json}"
+          repos_jsonl="/tmp/hops-registry-cache-repositories.jsonl"
+          repos_json="/tmp/hops-registry-cache-repositories.json"
+          regsync_config="/tmp/hops-registry-cache-regsync.yml"
+          repo_items="/tmp/hops-registry-cache-repository-items.jsonl"
+
+          log() {
+            printf '%s %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*" >&2
+          }
+
+          need() {
+            command -v "$1" >/dev/null 2>&1 || {
+              log "missing required binary: $1"
+              exit 127
+            }
+          }
+
+          normalize_ref() {
+            ref="$1"
+            ref="${ref#oci://}"
+            ref="${ref%%@sha256:*}"
+            last="${ref##*/}"
+            case "$last" in
+              *:*) ref="${ref%:*}" ;;
+            esac
+            printf '%s\n' "$ref"
+          }
+
+          registry_allowed() {
+            registry="$1"
+            jq -e --arg registry "$registry" \
+              '.discovery.crossplanePackages.registries | index($registry)' \
+              "$config" >/dev/null
+          }
+
+          append_repo() {
+            source="$1"
+            tags_json="${2:-}"
+            normalized="$(normalize_ref "$source")"
+            [ -n "$normalized" ] || return 0
+
+            if [ -n "$tags_json" ] && [ "$tags_json" != "null" ]; then
+              jq -cn --arg source "$normalized" --argjson tags "$tags_json" \
+                '{source: $source, tags: $tags}' >> "$repos_jsonl"
+            else
+              jq -cn --arg source "$normalized" '{source: $source}' >> "$repos_jsonl"
+            fi
+          }
+
+          create_ecr_repository() {
+            repo="$1"
+            if aws ecr describe-repositories \
+              --region "$region" \
+              --repository-names "$repo" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            if aws ecr create-repository \
+              --region "$region" \
+              --repository-name "$repo" >/dev/null 2>&1; then
+              return 0
+            fi
+
+            # Tolerate a concurrent creator between describe and create.
+            aws ecr describe-repositories \
+              --region "$region" \
+              --repository-names "$repo" >/dev/null
+          }
+
+          append_tag_policy() {
+            policy="$1"
+            allow_count="$(printf '%s' "$policy" | jq '.allow // [] | length')"
+            deny_count="$(printf '%s' "$policy" | jq '.deny // [] | length')"
+            semver_count="$(printf '%s' "$policy" | jq '.semverRange // [] | length')"
+
+            if [ "$allow_count" -eq 0 ] && [ "$deny_count" -eq 0 ] && [ "$semver_count" -eq 0 ]; then
+              return 0
+            fi
+
+            {
+              echo "    tags:"
+              if [ "$allow_count" -gt 0 ]; then
+                printf '      allow: %s\n' "$(printf '%s' "$policy" | jq -c '.allow')"
+              fi
+              if [ "$deny_count" -gt 0 ]; then
+                printf '      deny: %s\n' "$(printf '%s' "$policy" | jq -c '.deny')"
+              fi
+              if [ "$semver_count" -gt 0 ]; then
+                printf '      semverRange: %s\n' "$(printf '%s' "$policy" | jq -c '.semverRange')"
+              fi
+            } >> "$regsync_config"
+          }
+
+          need jq
+          need kubectl
+          need aws
+          need regsync
+
+          tool="$(jq -r '.tool // "regsync"' "$config")"
+          if [ "$tool" != "regsync" ]; then
+            log "unsupported mirror tool: $tool"
+            exit 1
+          fi
+
+          region="$(jq -r '.region' "$config")"
+          target_registry="$(jq -r '.target.registry' "$config")"
+          interval="$(jq -r '.regsync.interval // "6h"' "$config")"
+          parallel="$(jq -r '.regsync.parallel // 2' "$config")"
+          log_level="$(jq -r '.regsync.logLevel // "INFO"' "$config")"
+          missing_only="$(jq -r '.regsync.missingOnly // true' "$config")"
+
+          : > "$repos_jsonl"
+
+          configured_count="$(jq '.repositories | length' "$config")"
+          jq -c '.repositories[]? | select(.source != null and .source != "")' "$config" |
+          while IFS= read -r repo; do
+            source="$(printf '%s' "$repo" | jq -r '.source')"
+            tags_json="$(printf '%s' "$repo" | jq -c '.tags // empty')"
+            append_repo "$source" "$tags_json"
+          done
+
+          discovered_count=0
+          if jq -e '.discovery.crossplanePackages.enabled == true' "$config" >/dev/null; then
+            for resource in providers.pkg.crossplane.io functions.pkg.crossplane.io configurations.pkg.crossplane.io; do
+              package_json="/tmp/hops-registry-cache-${resource}.json"
+              if ! kubectl get "$resource" -o json > "$package_json" 2>/tmp/hops-registry-cache-kubectl.err; then
+                log "skipping discovery for $resource: $(cat /tmp/hops-registry-cache-kubectl.err)"
+                continue
+              fi
+
+              jq -r '.items[]?.spec.package // empty' "$package_json" |
+              while IFS= read -r package_ref; do
+                [ -n "$package_ref" ] || continue
+                repo="$(normalize_ref "$package_ref")"
+                registry="${repo%%/*}"
+                if registry_allowed "$registry"; then
+                  append_repo "$repo"
+                else
+                  log "skipping discovered repository without allowed registry: $repo"
+                fi
+              done
+            done
+          fi
+
+          jq -s 'reduce .[] as $repo ({}; if (($repo.source // "") == "") then . else .[$repo.source] //= $repo end) | [.[]]' \
+            "$repos_jsonl" > "$repos_json"
+
+          discovered_count="$(jq 'length' "$repos_json")"
+
+          {
+            echo "version: 1"
+            echo "creds:"
+            echo "  - registry: $target_registry"
+            echo "    credHelper: docker-credential-ecr-login"
+            echo "defaults:"
+            echo "  interval: $interval"
+            echo "  parallel: $parallel"
+            echo "sync:"
+          } > "$regsync_config"
+
+          jq -c '.[]' "$repos_json" > "$repo_items"
+
+          mirrored_count=0
+          skipped_count=0
+          while IFS= read -r repo; do
+            source="$(printf '%s' "$repo" | jq -r '.source')"
+            registry="${source%%/*}"
+            source_path="${source#*/}"
+            prefix="$(jq -r --arg registry "$registry" '.target.prefixes[$registry] // empty' "$config")"
+
+            if [ -z "$prefix" ]; then
+              skipped_count=$((skipped_count + 1))
+              log "skipping repository without target prefix: $source"
+              continue
+            fi
+
+            target_repo="$prefix/$source_path"
+            target="$target_registry/$target_repo"
+            create_ecr_repository "$target_repo"
+
+            {
+              echo "  - type: repository"
+              echo "    source: $source"
+              echo "    target: $target"
+              echo "    interval: $interval"
+            } >> "$regsync_config"
+
+            tag_policy="$(jq -c --argjson repo "$repo" '($repo.tags // .tags // {"mode":"all"})' "$config")"
+            append_tag_policy "$tag_policy"
+            mirrored_count=$((mirrored_count + 1))
+          done < "$repo_items"
+
+          if [ "$mirrored_count" -eq 0 ]; then
+            log "no repositories selected for mirroring; configured=$configured_count discovered=$discovered_count skipped=$skipped_count"
+            exit 0
+          fi
+
+          log "running regsync; configured=$configured_count discovered=$discovered_count mirrored=$mirrored_count skipped=$skipped_count missingOnly=$missing_only"
+          if [ "$missing_only" = "true" ]; then
+            regsync once -c "$regsync_config" --missing -v "$log_level"
+          else
+            regsync once -c "$regsync_config" -v "$log_level"
+          fi
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}

@@ -1,0 +1,28 @@
+# code: language=yaml
+#
+# Optional namespace ownership for the mirror job.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if and $cache.mirror.render $cache.mirror.createNamespace }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $cache.mirror.resourceName }}-namespace
+  annotations:
+    {{ setResourceNameAnnotation "mirror-namespace" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: {{ $cache.mirror.namespace }}
+        labels: {{ $cache.labels | toJson }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}

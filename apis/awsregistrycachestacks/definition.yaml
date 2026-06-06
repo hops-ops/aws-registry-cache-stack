@@ -1,0 +1,519 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: awsregistrycachestacks.aws.hops.ops.com.ai
+spec:
+  group: aws.hops.ops.com.ai
+  names:
+    categories:
+      - crossplane
+    kind: AWSRegistryCacheStack
+    plural: awsregistrycachestacks
+  scope: Namespaced
+  defaultCompositeDeletePolicy: Foreground
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    served: true
+    schema:
+      openAPIV3Schema:
+        description: AWSRegistryCacheStack combines ECR pull-through cache rules with scheduled OCI repository mirroring into ECR.
+        type: object
+        properties:
+          spec:
+            description: AWSRegistryCacheStackSpec defines the registry cache and mirror behavior for one AWS account and region.
+            type: object
+            properties:
+              accountId:
+                description: AWS account ID for the target private ECR registry.
+                type: string
+                pattern: "^[0-9]{12}$"
+              region:
+                description: AWS region where the target private ECR registry lives.
+                type: string
+                minLength: 1
+              clusterName:
+                description: Target EKS cluster name. Used as the default Kubernetes ProviderConfig name and PodIdentity cluster name.
+                type: string
+              managementPolicies:
+                description: Management policies for composed resources. Defaults to ["*"].
+                type: array
+                items:
+                  type: string
+                  enum:
+                  - "*"
+                  - Create
+                  - Observe
+                  - Update
+                  - Delete
+                  - LateInitialize
+                default:
+                - "*"
+              labels:
+                description: Custom labels applied to all composed resources.
+                type: object
+                additionalProperties:
+                  type: string
+                x-kubernetes-preserve-unknown-fields: true
+              tags:
+                description: Custom tags passed to taggable composed AWS resources.
+                type: object
+                additionalProperties:
+                  type: string
+                x-kubernetes-preserve-unknown-fields: true
+              providerConfigRefs:
+                description: ProviderConfig references for AWS and Kubernetes providers.
+                type: object
+                properties:
+                  aws:
+                    description: AWS ProviderConfig reference. Defaults to ProviderConfig/default.
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        default: default
+                      kind:
+                        type: string
+                        default: ProviderConfig
+                  kubernetes:
+                    description: Kubernetes ProviderConfig reference. Defaults to clusterName, then default.
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      kind:
+                        type: string
+                        enum:
+                        - ProviderConfig
+                        - ClusterProviderConfig
+                        default: ProviderConfig
+              pullThrough:
+                description: ECR pull-through cache rules for AWS-supported upstream registries.
+                type: object
+                properties:
+                  enabled:
+                    description: Whether to compose an ECRRegistryCache claim for pull-through cache rules.
+                    type: boolean
+                    default: false
+                  enhancedScanning:
+                    description: Optional registry-wide ECR enhanced scanning configuration passed to ECRRegistryCache.
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                        default: false
+                      scanFrequency:
+                        type: string
+                        enum:
+                        - CONTINUOUS_SCAN
+                        - SCAN_ON_PUSH
+                        default: CONTINUOUS_SCAN
+                      repositoryFilters:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            filter:
+                              type: string
+                            filterType:
+                              type: string
+                              enum:
+                              - WILDCARD
+                              default: WILDCARD
+                          required:
+                          - filter
+                  rules:
+                    description: Pull-through cache rules passed to ECRRegistryCache.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          description: Stable name used for composed resource keys and status entries.
+                          type: string
+                          minLength: 1
+                          maxLength: 40
+                          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                        ecrRepositoryPrefix:
+                          description: ECR namespace prefix for cached images, such as ghcr or kubernetes.
+                          type: string
+                          minLength: 1
+                        upstreamRegistryUrl:
+                          description: AWS-supported upstream registry URL.
+                          type: string
+                          minLength: 1
+                        credentialArn:
+                          description: Secrets Manager ARN for authenticated upstream registries.
+                          type: string
+                        customRoleArn:
+                          description: IAM role ARN for ECR-to-ECR pull-through cache where required.
+                          type: string
+                        upstreamRepositoryPrefix:
+                          description: Optional upstream repository prefix for supported ECR-to-ECR pull-through cache rules.
+                          type: string
+                        forProvider:
+                          description: Provider-specific PullThroughCacheRule overrides merged after typed defaults.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        repositoryCreationTemplate:
+                          description: Optional ECR repository creation template for repositories auto-created on first pull.
+                          type: object
+                          properties:
+                            enabled:
+                              type: boolean
+                              default: false
+                            description:
+                              type: string
+                            customRoleArn:
+                              type: string
+                            encryptionConfiguration:
+                              type: array
+                              items:
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+                            imageTagMutability:
+                              type: string
+                              enum:
+                              - MUTABLE
+                              - IMMUTABLE
+                              - IMMUTABLE_WITH_EXCLUSION
+                              - MUTABLE_WITH_EXCLUSION
+                            imageTagMutabilityExclusionFilter:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  filter:
+                                    type: string
+                                  filterType:
+                                    type: string
+                                    enum:
+                                    - WILDCARD
+                                    default: WILDCARD
+                                required:
+                                - filter
+                            lifecyclePolicy:
+                              type: string
+                            repositoryPolicy:
+                              type: string
+                            resourceTags:
+                              type: object
+                              additionalProperties:
+                                type: string
+                              x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - name
+                      - ecrRepositoryPrefix
+                      - upstreamRegistryUrl
+              mirror:
+                description: Scheduled OCI repository mirror into the target ECR registry.
+                type: object
+                properties:
+                  enabled:
+                    description: Whether to render the mirror CronJob and its Kubernetes resources.
+                    type: boolean
+                    default: false
+                  namespace:
+                    description: Namespace for the mirror CronJob. Defaults to crossplane-system.
+                    type: string
+                    default: crossplane-system
+                  createNamespace:
+                    description: Whether this stack should create the mirror namespace.
+                    type: boolean
+                    default: false
+                  schedule:
+                    description: Cron schedule for mirror runs.
+                    type: string
+                    default: "0 */6 * * *"
+                  suspend:
+                    description: Whether to create the CronJob suspended.
+                    type: boolean
+                    default: false
+                  tool:
+                    description: Mirror tool used by the wrapper. Only regsync is supported in v1.
+                    type: string
+                    enum:
+                    - regsync
+                    default: regsync
+                  image:
+                    description: Mirror wrapper image. Must include sh, kubectl, jq, aws, regsync, and the ECR credential helper.
+                    type: string
+                    default: ghcr.io/hops-ops/registry-cache-mirror:latest
+                  imagePullPolicy:
+                    type: string
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    default: IfNotPresent
+                  imagePullSecrets:
+                    description: Optional image pull secrets for the mirror CronJob.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                      required:
+                      - name
+                  serviceAccount:
+                    description: Mirror ServiceAccount settings.
+                    type: object
+                    properties:
+                      name:
+                        description: ServiceAccount name. Defaults to <xr-name>-mirror.
+                        type: string
+                      annotations:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        x-kubernetes-preserve-unknown-fields: true
+                      labels:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        x-kubernetes-preserve-unknown-fields: true
+                  target:
+                    description: Target registry and source-registry prefix mapping.
+                    type: object
+                    properties:
+                      registry:
+                        description: Target registry host. Defaults to <account>.dkr.ecr.<region>.amazonaws.com.
+                        type: string
+                      prefixes:
+                        description: Map of source registry host to target ECR repository prefix.
+                        type: object
+                        additionalProperties:
+                          type: string
+                        x-kubernetes-preserve-unknown-fields: true
+                  discovery:
+                    description: Repository discovery configuration.
+                    type: object
+                    properties:
+                      crossplanePackages:
+                        description: Discover repositories from live Crossplane package resources.
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                            default: true
+                          mode:
+                            description: Discovery output mode. Only repository mode is supported in v1.
+                            type: string
+                            enum:
+                            - repository
+                            default: repository
+                          registries:
+                            description: Source registries eligible for package discovery.
+                            type: array
+                            items:
+                              type: string
+                          namespaces:
+                            description: Reserved for future namespaced package discovery. Crossplane package resources are cluster-scoped today.
+                            type: array
+                            items:
+                              type: string
+                  repositories:
+                    description: Explicit source repositories to mirror. Tags are mirrored repository-wide by default.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        source:
+                          description: Source repository, with or without tag/digest. It is normalized to registry/repository.
+                          type: string
+                          minLength: 1
+                        tags:
+                          description: Optional repository-specific tag policy.
+                          type: object
+                          properties:
+                            mode:
+                              type: string
+                              enum:
+                              - all
+                              - filtered
+                              default: all
+                            allow:
+                              type: array
+                              items:
+                                type: string
+                            deny:
+                              type: array
+                              items:
+                                type: string
+                            semverRange:
+                              type: array
+                              items:
+                                type: string
+                      required:
+                      - source
+                  tags:
+                    description: Global tag policy used when a repository omits a repository-specific policy.
+                    type: object
+                    properties:
+                      mode:
+                        type: string
+                        enum:
+                        - all
+                        - filtered
+                        default: all
+                      allow:
+                        type: array
+                        items:
+                          type: string
+                      deny:
+                        type: array
+                        items:
+                          type: string
+                      semverRange:
+                        type: array
+                        items:
+                          type: string
+                  regsync:
+                    description: regsync execution options used by the wrapper.
+                    type: object
+                    properties:
+                      missingOnly:
+                        description: Use regsync once --missing for routine syncs.
+                        type: boolean
+                        default: true
+                      interval:
+                        description: Interval written to generated repository sync entries.
+                        type: string
+                        default: 6h
+                      parallel:
+                        description: Default regsync parallelism.
+                        type: integer
+                        minimum: 1
+                        default: 2
+                      logLevel:
+                        type: string
+                        default: INFO
+                  podIdentity:
+                    description: Optional AWS PodIdentity for the mirror job's ECR permissions.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether to compose an aws.hops PodIdentity for the mirror ServiceAccount.
+                        type: boolean
+                        default: true
+                      rolePrefix:
+                        type: string
+                      roleNameOverride:
+                        type: string
+                      permissionsBoundaryArn:
+                        type: string
+                  env:
+                    description: Extra environment variables for the mirror container.
+                    type: array
+                    items:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  envFrom:
+                    description: Extra envFrom sources for the mirror container.
+                    type: array
+                    items:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  resources:
+                    description: Container resource requests and limits.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  podSecurityContext:
+                    description: Pod securityContext override.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  securityContext:
+                    description: Container securityContext override.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  nodeSelector:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    x-kubernetes-preserve-unknown-fields: true
+                  tolerations:
+                    type: array
+                    items:
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  affinity:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  concurrencyPolicy:
+                    type: string
+                    enum:
+                    - Allow
+                    - Forbid
+                    - Replace
+                    default: Forbid
+                  startingDeadlineSeconds:
+                    type: integer
+                    minimum: 0
+                  successfulJobsHistoryLimit:
+                    type: integer
+                    minimum: 0
+                    default: 1
+                  failedJobsHistoryLimit:
+                    type: integer
+                    minimum: 0
+                    default: 3
+                  backoffLimit:
+                    type: integer
+                    minimum: 0
+                    default: 1
+                  activeDeadlineSeconds:
+                    type: integer
+                    minimum: 1
+                    default: 7200
+            required:
+            - accountId
+            - region
+          status:
+            description: AWSRegistryCacheStackStatus exposes configured registry cache outputs and composed readiness.
+            type: object
+            properties:
+              ready:
+                type: boolean
+              registry:
+                type: object
+                properties:
+                  host:
+                    type: string
+              pullThrough:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  ready:
+                    type: boolean
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        pullPrefix:
+                          type: string
+              mirror:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  ready:
+                    type: boolean
+                  namespace:
+                    type: string
+                  schedule:
+                    type: string
+                  targetRegistry:
+                    type: string
+                  configuredRepositories:
+                    type: integer
+                  discoveryEnabled:
+                    type: boolean
+                  podIdentityEnabled:
+                    type: boolean
+        required:
+        - spec

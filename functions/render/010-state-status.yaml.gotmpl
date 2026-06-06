@@ -1,0 +1,51 @@
+# code: language=yaml
+#
+# Compute XR status from desired and observed state.
+#
+
+{{- $cache := $state.registryCache }}
+{{- $readyMap := $state.observed.ready | default dict }}
+
+{{- $pullThroughReady := true }}
+{{- if $cache.pullThrough.render }}
+  {{- $pullThroughReady = (get $readyMap "ecr-registry-cache" | default false) }}
+{{- end }}
+
+{{- $mirrorReady := true }}
+{{- if $cache.mirror.render }}
+  {{- range $key := list "mirror-service-account" "mirror-cluster-role" "mirror-cluster-role-binding" "mirror-config" "mirror-cronjob" }}
+    {{- if not (get $readyMap $key | default false) }}
+      {{- $mirrorReady = false }}
+    {{- end }}
+  {{- end }}
+  {{- if and $cache.mirror.createNamespace (not (get $readyMap "mirror-namespace" | default false)) }}
+    {{- $mirrorReady = false }}
+  {{- end }}
+  {{- if and $cache.mirror.renderPodIdentity (not (get $readyMap "pod-identity" | default false)) }}
+    {{- $mirrorReady = false }}
+  {{- end }}
+{{- end }}
+
+{{- $ready := and $pullThroughReady $mirrorReady }}
+
+{{- $state = set $state "status" (dict
+  "ready" $ready
+  "registry" (dict
+    "host" $cache.registryHost
+  )
+  "pullThrough" (dict
+    "enabled" $cache.pullThrough.enabled
+    "ready" $pullThroughReady
+    "rules" $cache.pullThrough.statusRules
+  )
+  "mirror" (dict
+    "enabled" $cache.mirror.enabled
+    "ready" $mirrorReady
+    "namespace" $cache.mirror.namespace
+    "schedule" $cache.mirror.schedule
+    "targetRegistry" $cache.mirror.target.registry
+    "configuredRepositories" (len $cache.mirror.repositories)
+    "discoveryEnabled" $cache.mirror.discovery.crossplanePackages.enabled
+    "podIdentityEnabled" $cache.mirror.renderPodIdentity
+  )
+) }}

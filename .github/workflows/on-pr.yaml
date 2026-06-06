@@ -1,0 +1,51 @@
+name: on-pr
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - labeled
+      - opened
+      - reopened
+      - synchronize
+    paths:
+      - '.github/workflows/on-pr.yaml'
+      - '.gitops/**'
+      - 'apis/**'
+      - 'examples/**'
+      - 'tests/**'
+      - 'functions/**'
+      - 'upbound.yaml'
+
+permissions:
+  id-token: write
+  packages: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate:
+    uses: unbounded-tech/workflows-crossplane/.github/workflows/validate.yaml@v2.20.0
+    with:
+      examples: |
+        [
+          { "example": "examples/awsregistrycachestacks/minimal.yaml" },
+          { "example": "examples/awsregistrycachestacks/mirror.yaml" },
+          { "example": "examples/awsregistrycachestacks/standard.yaml" }
+        ]
+      api_path: apis/awsregistrycachestacks
+      error_on_missing_schemas: true
+
+  test:
+    uses: unbounded-tech/workflows-crossplane/.github/workflows/test.yaml@v2.20.0
+
+  publish:
+    needs:
+      - validate
+      - test
+    uses: unbounded-tech/workflows-crossplane/.github/workflows/publish.yaml@v2.20.0
+    secrets: inherit
+    with:
+      tag: pr-${{ github.event.pull_request.number }}-${{ github.sha }}

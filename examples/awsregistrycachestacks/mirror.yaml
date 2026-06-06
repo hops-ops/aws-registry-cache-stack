@@ -1,0 +1,27 @@
+apiVersion: aws.hops.ops.com.ai/v1alpha1
+kind: AWSRegistryCacheStack
+metadata:
+  name: platform-registry-cache
+  namespace: default
+spec:
+  accountId: "123456789012"
+  region: us-east-2
+  clusterName: platform-cluster
+  providerConfigRefs:
+    kubernetes:
+      name: platform-cluster
+      kind: ProviderConfig
+  mirror:
+    enabled: true
+    namespace: crossplane-system
+    schedule: "0 */6 * * *"
+    podIdentity:
+      enabled: false
+    repositories:
+      - source: xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr:v2.5.0
+      - source: xpkg.crossplane.io/crossplane-contrib/function-auto-ready
+        tags:
+          allow:
+            - "^v0\\."
+          deny:
+            - ".*-rc\\..*"

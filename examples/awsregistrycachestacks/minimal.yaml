@@ -1,0 +1,21 @@
+apiVersion: aws.hops.ops.com.ai/v1alpha1
+kind: AWSRegistryCacheStack
+metadata:
+  name: platform-registry-cache
+  namespace: default
+spec:
+  accountId: "123456789012"
+  region: us-east-2
+  pullThrough:
+    enabled: true
+    rules:
+      - name: ecr-public
+        ecrRepositoryPrefix: ecr-public
+        upstreamRegistryUrl: public.ecr.aws
+        repositoryCreationTemplate:
+          enabled: true
+      - name: kubernetes
+        ecrRepositoryPrefix: kubernetes
+        upstreamRegistryUrl: registry.k8s.io
+        repositoryCreationTemplate:
+          enabled: true

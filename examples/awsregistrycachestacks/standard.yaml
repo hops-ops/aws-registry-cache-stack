@@ -1,0 +1,60 @@
+apiVersion: aws.hops.ops.com.ai/v1alpha1
+kind: AWSRegistryCacheStack
+metadata:
+  name: platform-registry-cache
+  namespace: default
+spec:
+  accountId: "123456789012"
+  region: us-east-2
+  clusterName: platform-cluster
+  labels:
+    team: platform
+  tags:
+    team: platform
+  providerConfigRefs:
+    aws:
+      name: default
+      kind: ProviderConfig
+    kubernetes:
+      name: platform-cluster
+      kind: ProviderConfig
+  pullThrough:
+    enabled: true
+    rules:
+      - name: ecr-public
+        ecrRepositoryPrefix: ecr-public
+        upstreamRegistryUrl: public.ecr.aws
+        repositoryCreationTemplate:
+          enabled: true
+      - name: kubernetes
+        ecrRepositoryPrefix: kubernetes
+        upstreamRegistryUrl: registry.k8s.io
+        repositoryCreationTemplate:
+          enabled: true
+      - name: quay
+        ecrRepositoryPrefix: quay
+        upstreamRegistryUrl: quay.io
+        repositoryCreationTemplate:
+          enabled: true
+  mirror:
+    enabled: true
+    namespace: crossplane-system
+    schedule: "0 */6 * * *"
+    target:
+      prefixes:
+        xpkg.crossplane.io: xpkg-crossplane
+        xpkg.upbound.io: xpkg-upbound
+    discovery:
+      crossplanePackages:
+        enabled: true
+        registries:
+          - xpkg.crossplane.io
+          - xpkg.upbound.io
+    repositories:
+      - source: xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr
+      - source: xpkg.crossplane.io/crossplane-contrib/function-auto-ready
+      - source: xpkg.upbound.io/wildbitca/provider-cloudflare-dns
+    tags:
+      mode: all
+    podIdentity:
+      rolePrefix: platform-

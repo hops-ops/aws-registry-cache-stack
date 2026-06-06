@@ -1,0 +1,67 @@
+# code: language=yaml
+#
+# Read-only Crossplane package discovery RBAC for the mirror job.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.mirror.render }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $cache.mirror.resourceName }}-role
+  annotations:
+    {{ setResourceNameAnnotation "mirror-cluster-role" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: {{ $cache.mirror.resourceName }}-reader
+        labels: {{ $cache.labels | toJson }}
+      rules:
+        - apiGroups:
+            - pkg.crossplane.io
+          resources:
+            - providers
+            - functions
+            - configurations
+          verbs:
+            - get
+            - list
+            - watch
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $cache.mirror.resourceName }}-rolebinding
+  annotations:
+    {{ setResourceNameAnnotation "mirror-cluster-role-binding" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: {{ $cache.mirror.resourceName }}-reader
+        labels: {{ $cache.labels | toJson }}
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: {{ $cache.mirror.resourceName }}-reader
+      subjects:
+        - kind: ServiceAccount
+          name: {{ $cache.mirror.serviceAccount.name }}
+          namespace: {{ $cache.mirror.namespace }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}

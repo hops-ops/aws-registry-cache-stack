@@ -1,0 +1,33 @@
+apiVersion: meta.dev.upbound.io/v2alpha1
+kind: Project
+metadata:
+  name: aws-registry-cache-stack
+spec:
+  dependsOn:
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Function
+    package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready
+    version: '>=v0.6.4'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    package: xpkg.crossplane.io/crossplane-contrib/provider-kubernetes
+    version: '>=v1'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Configuration
+    package: ghcr.io/hops-ops/aws-ecr-registry-cache
+    version: '>=v0.1.0'
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Configuration
+    package: ghcr.io/hops-ops/aws-pod-identity
+    version: '>=v0.10.1'
+  description: Combines AWS ECR pull-through cache rules with a Kubernetes-side OCI
+    package mirror for registries that ECR pull-through does not support.
+  license: Apache-2.0
+  maintainer: Patrick Lee Scott <pat@patscott.io>
+  readme: |
+    # aws-registry-cache-stack
+
+    ECR pull-through cache plus scheduled OCI package mirroring for unsupported
+    registries such as xpkg.crossplane.io and xpkg.upbound.io.
+  repository: ghcr.io/hops-ops/aws-registry-cache-stack
+  source: github.com/hops-ops/aws-registry-cache-stack

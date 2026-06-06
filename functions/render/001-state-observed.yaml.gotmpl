@@ -1,0 +1,33 @@
+# code: language=yaml
+#
+# Extract composed resource readiness from observed state.
+#
+
+{{- $observedResources := $.observed.resources | default dict }}
+{{- $readiness := dict }}
+
+{{- range $key := list
+  "ecr-registry-cache"
+  "mirror-namespace"
+  "mirror-service-account"
+  "mirror-cluster-role"
+  "mirror-cluster-role-binding"
+  "mirror-config"
+  "mirror-cronjob"
+  "pod-identity"
+}}
+  {{- $entry := get $observedResources $key | default dict }}
+  {{- $resource := $entry.resource | default dict }}
+  {{- $status := $resource.status | default dict }}
+  {{- $ready := false }}
+  {{- range ($status.conditions | default list) }}
+    {{- if and (eq .type "Ready") (eq .status "True") }}
+      {{- $ready = true }}
+    {{- end }}
+  {{- end }}
+  {{- $_ := set $readiness $key $ready }}
+{{- end }}
+
+{{- $state = set $state "observed" (dict
+  "ready" $readiness
+) }}

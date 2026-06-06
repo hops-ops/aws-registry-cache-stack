@@ -1,0 +1,28 @@
+# code: language=yaml
+#
+# Update XR status.
+#
+
+{{- $xr := getCompositeResource . }}
+{{- $s := $state.status }}
+---
+apiVersion: {{ $xr.apiVersion }}
+kind: {{ $xr.kind }}
+status:
+  ready: {{ $s.ready }}
+  registry:
+    host: {{ $s.registry.host }}
+  pullThrough:
+    enabled: {{ $s.pullThrough.enabled }}
+    ready: {{ $s.pullThrough.ready }}
+    rules:
+      {{- toYaml $s.pullThrough.rules | nindent 6 }}
+  mirror:
+    enabled: {{ $s.mirror.enabled }}
+    ready: {{ $s.mirror.ready }}
+    namespace: {{ $s.mirror.namespace }}
+    schedule: {{ $s.mirror.schedule | quote }}
+    targetRegistry: {{ $s.mirror.targetRegistry }}
+    configuredRepositories: {{ $s.mirror.configuredRepositories }}
+    discoveryEnabled: {{ $s.mirror.discoveryEnabled }}
+    podIdentityEnabled: {{ $s.mirror.podIdentityEnabled }}

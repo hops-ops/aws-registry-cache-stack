@@ -1,0 +1,64 @@
+# code: language=yaml
+#
+# Compute derived registry cache stack values.
+#
+
+{{- $eff := $state.spec.effective }}
+{{- $mirror := $eff.mirror }}
+{{- $pullThrough := $eff.pullThrough }}
+
+{{- $renderPullThrough := and $pullThrough.enabled (gt (len $pullThrough.rules) 0) }}
+{{- $renderMirror := $mirror.enabled }}
+{{- $renderPodIdentity := and $renderMirror $mirror.podIdentity.enabled }}
+
+{{- $pullThroughRules := list }}
+{{- range $rule := $pullThrough.rules }}
+  {{- $pullThroughRules = append $pullThroughRules (dict
+    "name" $rule.name
+    "pullPrefix" (printf "%s/%s" $eff.registryHost $rule.ecrRepositoryPrefix)
+  ) }}
+{{- end }}
+
+{{- $ecrRepositoryArns := list }}
+{{- range $sourceRegistry, $prefix := $mirror.target.prefixes }}
+  {{- if $prefix }}
+    {{- $ecrRepositoryArns = append $ecrRepositoryArns (printf "arn:aws:ecr:%s:%s:repository/%s/*" $eff.region $eff.accountId $prefix) }}
+  {{- end }}
+{{- end }}
+
+{{- $mirrorConfig := dict
+  "accountId" $eff.accountId
+  "region" $eff.region
+  "tool" $mirror.tool
+  "target" $mirror.target
+  "discovery" $mirror.discovery
+  "repositories" $mirror.repositories
+  "tags" $mirror.tags
+  "regsync" $mirror.regsync
+}}
+
+{{- $state = set $state "registryCache" (dict
+  "name" $eff.name
+  "accountId" $eff.accountId
+  "region" $eff.region
+  "clusterName" $eff.clusterName
+  "registryHost" $eff.registryHost
+  "managementPolicies" $eff.managementPolicies
+  "providerConfigRefs" $eff.providerConfigRefs
+  "labels" $eff.labels
+  "tags" $eff.tags
+  "pullThrough" (dict
+    "enabled" $pullThrough.enabled
+    "render" $renderPullThrough
+    "rules" $pullThrough.rules
+    "statusRules" $pullThroughRules
+    "enhancedScanning" $pullThrough.enhancedScanning
+  )
+  "mirror" (merge (dict) $mirror (dict
+    "render" $renderMirror
+    "renderPodIdentity" $renderPodIdentity
+    "resourceName" (printf "%s-mirror" $eff.name)
+    "config" $mirrorConfig
+    "ecrRepositoryArns" $ecrRepositoryArns
+  ))
+) }}
