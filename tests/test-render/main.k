@@ -5,7 +5,7 @@ _items = [
     {
         apiVersion = "meta.dev.upbound.io/v1alpha1"
         kind = "CompositionTest"
-        metadata.name = "pull-through-renders-direct-ecr-resources"
+        metadata.name = "distribution-renders-s3-and-proxy-runtime"
         spec = {
             compositionPath = _composition
             xrdPath = _xrd
@@ -19,93 +19,20 @@ _items = [
                 spec = {
                     accountId = "123456789012"
                     region = "us-east-2"
-                    providerConfigRefs = {
-                        aws = {
-                            name = "aws-prod"
-                            kind = "ProviderConfig"
-                        }
-                    }
-                    pullThrough = {
-                        enabled = True
-                        rules = [
-                            {
-                                name = "kubernetes"
-                                ecrRepositoryPrefix = "kubernetes"
-                                upstreamRegistryUrl = "registry.k8s.io"
-                                repositoryCreationTemplate = {
-                                    enabled = True
-                                }
-                            }
-                        ]
-                    }
-                }
-            }
-            assertResources = [
-                {
-                    apiVersion = "ecr.aws.m.upbound.io/v1beta1"
-                    kind = "PullThroughCacheRule"
-                    metadata.name = "platform-kubernetes"
-                    spec = {
-                        managementPolicies = ["*"]
-                        forProvider = {
-                            region = "us-east-2"
-                            ecrRepositoryPrefix = "kubernetes"
-                            upstreamRegistryUrl = "registry.k8s.io"
-                        }
-                        providerConfigRef = {
-                            name = "aws-prod"
-                            kind = "ProviderConfig"
-                        }
-                    }
-                }
-                {
-                    apiVersion = "ecr.aws.m.upbound.io/v1beta1"
-                    kind = "RepositoryCreationTemplate"
-                    metadata.name = "platform-kubernetes"
-                    spec = {
-                        managementPolicies = ["*"]
-                        forProvider = {
-                            region = "us-east-2"
-                            prefix = "kubernetes"
-                            appliedFor = ["PULL_THROUGH_CACHE"]
-                            resourceTags = {}
-                        }
-                        providerConfigRef = {
-                            name = "aws-prod"
-                            kind = "ProviderConfig"
-                        }
-                    }
-                }
-            ]
-        }
-    }
-
-    {
-        apiVersion = "meta.dev.upbound.io/v1alpha1"
-        kind = "CompositionTest"
-        metadata.name = "mirror-renders-cronjob-and-read-rbac"
-        spec = {
-            compositionPath = _composition
-            xrdPath = _xrd
-            timeoutSeconds = 60
-            validate = False
-            xr = {
-                apiVersion = "aws.hops.ops.com.ai/v1alpha1"
-                kind = "RegistryCache"
-                metadata.name = "platform"
-                metadata.namespace = "default"
-                spec = {
-                    accountId = "123456789012"
-                    region = "us-east-2"
-                    clusterName = "platform-cluster"
-                    mirror = {
+                    distribution = {
                         enabled = True
                         podIdentity = {
                             enabled = False
                         }
-                        repositories = [
+                        storage = {
+                            lifecycle = {
+                                abortIncompleteMultipartUploadDays = 2
+                            }
+                        }
+                        upstreams = [
                             {
-                                source = "xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr:v2.5.0"
+                                name = "xpkg-crossplane"
+                                sourceRegistry = "xpkg.crossplane.io"
                             }
                         ]
                     }
@@ -113,184 +40,116 @@ _items = [
             }
             assertResources = [
                 {
-                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
-                    kind = "Object"
-                    metadata.name = "platform-mirror-sa"
-                    spec.providerConfigRef = {
-                        name = "platform-cluster"
-                        kind = "ProviderConfig"
+                    apiVersion = "s3.aws.m.upbound.io/v1beta1"
+                    kind = "Bucket"
+                    metadata.name = "platform-distribution-bucket"
+                    metadata.annotations = {
+                        "crossplane.io/external-name" = "hops-123456789012-us-east-2-platform-registry-cache"
                     }
-                    spec.forProvider.manifest = {
-                        apiVersion = "v1"
-                        kind = "ServiceAccount"
-                        metadata = {
-                            name = "platform-mirror"
-                            namespace = "crossplane-system"
-                        }
-                    }
-                }
-                {
-                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
-                    kind = "Object"
-                    metadata.name = "platform-mirror-role"
-                    spec.forProvider.manifest = {
-                        apiVersion = "rbac.authorization.k8s.io/v1"
-                        kind = "ClusterRole"
-                        rules = [
-                            {
-                                apiGroups = ["pkg.crossplane.io"]
-                                resources = ["providers", "functions", "configurations"]
-                                verbs = ["get", "list", "watch"]
+                    spec = {
+                        managementPolicies = ["*"]
+                        forProvider = {
+                            region = "us-east-2"
+                            tags = {
+                                "hops.ops.com.ai/managed" = "true"
+                                "hops.ops.com.ai/registrycache" = "platform"
                             }
-                        ]
+                        }
+                        providerConfigRef = {
+                            name = "default"
+                            kind = "ProviderConfig"
+                        }
                     }
                 }
                 {
-                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
-                    kind = "Object"
-                    metadata.name = "platform-mirror-cronjob"
-                    spec.forProvider.manifest = {
-                        apiVersion = "batch/v1"
-                        kind = "CronJob"
-                        metadata = {
-                            name = "platform-mirror"
-                            namespace = "crossplane-system"
-                        }
-                        spec = {
-                            schedule = "0 */6 * * *"
-                            concurrencyPolicy = "Forbid"
-                            jobTemplate.spec.template.spec = {
-                                serviceAccountName = "platform-mirror"
-                                containers = [
+                    apiVersion = "s3.aws.m.upbound.io/v1beta1"
+                    kind = "BucketLifecycleConfiguration"
+                    metadata.name = "platform-distribution-bucket-lifecycle"
+                    metadata.annotations = {
+                        "crossplane.io/external-name" = "hops-123456789012-us-east-2-platform-registry-cache"
+                    }
+                    spec.forProvider = {
+                        bucket = "hops-123456789012-us-east-2-platform-registry-cache"
+                        region = "us-east-2"
+                        transitionDefaultMinimumObjectSize = "all_storage_classes_128K"
+                        rule = [
+                            {
+                                id = "abort-incomplete-multipart-uploads"
+                                status = "Enabled"
+                                "filter" = [
                                     {
-                                        name = "mirror"
-                                        image = "ghcr.io/hops-ops/registry-cache-mirror:latest"
+                                        prefix = ""
+                                    }
+                                ]
+                                abortIncompleteMultipartUpload = [
+                                    {
+                                        daysAfterInitiation = 2
                                     }
                                 ]
                             }
-                        }
-                    }
-                }
-            ]
-        }
-    }
-
-    {
-        apiVersion = "meta.dev.upbound.io/v1alpha1"
-        kind = "CompositionTest"
-        metadata.name = "mirror-config-includes-explicit-repositories"
-        spec = {
-            compositionPath = _composition
-            xrdPath = _xrd
-            timeoutSeconds = 60
-            validate = False
-            xr = {
-                apiVersion = "aws.hops.ops.com.ai/v1alpha1"
-                kind = "RegistryCache"
-                metadata.name = "platform"
-                metadata.namespace = "default"
-                spec = {
-                    accountId = "123456789012"
-                    region = "us-east-2"
-                    mirror = {
-                        enabled = True
-                        podIdentity = {
-                            enabled = False
-                        }
-                        repositories = [
-                            {
-                                source = "xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr:v2.5.0"
-                                tags = {
-                                    allow = ["^v2\\."]
-                                    deny = [".*-rc\\..*"]
-                                }
-                            }
                         ]
                     }
                 }
-            }
-            assertResources = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-mirror-config"
+                    metadata.name = "platform-dist-xpkg-crossplane-config"
                     spec.forProvider.manifest = {
                         apiVersion = "v1"
                         kind = "ConfigMap"
                         metadata = {
-                            name = "platform-mirror"
+                            name = "platform-dist-xpkg-crossplane"
                             namespace = "crossplane-system"
                         }
-                        data = {
-                            "mirror-config.json" = "{\"accountId\":\"123456789012\",\"discovery\":{\"crossplanePackages\":{\"enabled\":true,\"mode\":\"repository\",\"namespaces\":[],\"registries\":[\"xpkg.crossplane.io\",\"xpkg.upbound.io\"]}},\"region\":\"us-east-2\",\"regsync\":{\"interval\":\"6h\",\"logLevel\":\"INFO\",\"missingOnly\":true,\"parallel\":2},\"repositories\":[{\"source\":\"xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr:v2.5.0\",\"tags\":{\"allow\":[\"^v2\\\\.\"],\"deny\":[\".*-rc\\\\..*\"],\"mode\":\"all\"}}],\"tags\":{\"allow\":[\"^v.*\"],\"mode\":\"filtered\"},\"target\":{\"prefixes\":{\"xpkg.crossplane.io\":\"xpkg-crossplane\",\"xpkg.upbound.io\":\"xpkg-upbound\"},\"registry\":\"123456789012.dkr.ecr.us-east-2.amazonaws.com\"},\"tool\":\"regsync\"}"
-                        }
-                    }
-                }
-            ]
-        }
-    }
-
-    {
-        apiVersion = "meta.dev.upbound.io/v1alpha1"
-        kind = "CompositionTest"
-        metadata.name = "mirror-lifecycle-renders-create-on-push-templates"
-        spec = {
-            compositionPath = _composition
-            xrdPath = _xrd
-            timeoutSeconds = 60
-            validate = False
-            xr = {
-                apiVersion = "aws.hops.ops.com.ai/v1alpha1"
-                kind = "RegistryCache"
-                metadata.name = "platform"
-                metadata.namespace = "default"
-                spec = {
-                    accountId = "123456789012"
-                    region = "us-east-2"
-                    mirror = {
-                        enabled = True
-                        podIdentity = {
-                            enabled = False
-                        }
-                        lifecyclePolicy = {
-                            enabled = True
-                            untaggedExpireAfterDays = 2
-                        }
-                    }
-                }
-            }
-            assertResources = [
-                {
-                    apiVersion = "ecr.aws.m.upbound.io/v1beta1"
-                    kind = "RepositoryCreationTemplate"
-                    metadata.name = "platform-mirror-xpkg-crossplane"
-                    spec = {
-                        managementPolicies = ["*"]
-                        forProvider = {
-                            region = "us-east-2"
-                            prefix = "xpkg-crossplane"
-                            appliedFor = ["CREATE_ON_PUSH"]
-                            description = "Mirror repositories for xpkg.crossplane.io"
-                            lifecyclePolicy = "{\"rules\":[{\"action\":{\"type\":\"expire\"},\"description\":\"Expire untagged images after 2 day(s)\",\"rulePriority\":1,\"selection\":{\"countNumber\":2,\"countType\":\"sinceImagePushed\",\"countUnit\":\"days\",\"tagStatus\":\"untagged\"}}]}"
-                        }
-                    }
-                }
-                {
-                    apiVersion = "ecr.aws.m.upbound.io/v1beta1"
-                    kind = "RepositoryCreationTemplate"
-                    metadata.name = "platform-mirror-xpkg-upbound"
-                    spec.forProvider = {
-                        region = "us-east-2"
-                        prefix = "xpkg-upbound"
-                        appliedFor = ["CREATE_ON_PUSH"]
                     }
                 }
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-mirror-config"
-                    spec.forProvider.manifest.data = {
-                        "mirror-config.json" = "{\"accountId\":\"123456789012\",\"discovery\":{\"crossplanePackages\":{\"enabled\":true,\"mode\":\"repository\",\"namespaces\":[],\"registries\":[\"xpkg.crossplane.io\",\"xpkg.upbound.io\"]}},\"region\":\"us-east-2\",\"regsync\":{\"interval\":\"6h\",\"logLevel\":\"INFO\",\"missingOnly\":true,\"parallel\":2},\"repositories\":[],\"repositoryCreation\":{\"createRepositories\":false,\"mode\":\"create-on-push\"},\"tags\":{\"allow\":[\"^v.*\"],\"mode\":\"filtered\"},\"target\":{\"prefixes\":{\"xpkg.crossplane.io\":\"xpkg-crossplane\",\"xpkg.upbound.io\":\"xpkg-upbound\"},\"registry\":\"123456789012.dkr.ecr.us-east-2.amazonaws.com\"},\"tool\":\"regsync\"}"
+                    metadata.name = "platform-dist-xpkg-crossplane-deploy"
+                    spec.forProvider.manifest = {
+                        apiVersion = "apps/v1"
+                        kind = "Deployment"
+                        metadata = {
+                            name = "platform-dist-xpkg-crossplane"
+                            namespace = "crossplane-system"
+                        }
+                        spec.template.spec = {
+                            serviceAccountName = "platform-distribution"
+                            containers = [
+                                {
+                                    name = "registry"
+                                    image = "registry:3"
+                                    args = [
+                                        "serve"
+                                        "/etc/distribution/config.yml"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-xpkg-crossplane-service"
+                    spec.forProvider.manifest = {
+                        apiVersion = "v1"
+                        kind = "Service"
+                        metadata = {
+                            name = "platform-dist-xpkg-crossplane"
+                            namespace = "crossplane-system"
+                        }
+                        spec = {
+                            type = "ClusterIP"
+                            ports = [
+                                {
+                                    name = "registry"
+                                    port = 5000
+                                    targetPort = "registry"
+                                }
+                            ]
+                        }
                     }
                 }
             ]
@@ -300,7 +159,7 @@ _items = [
     {
         apiVersion = "meta.dev.upbound.io/v1alpha1"
         kind = "CompositionTest"
-        metadata.name = "pod-identity-enabled-by-default"
+        metadata.name = "distribution-renders-pod-identity-and-dockerhub-rewrite"
         spec = {
             compositionPath = _composition
             xrdPath = _xrd
@@ -315,8 +174,53 @@ _items = [
                     accountId = "123456789012"
                     region = "us-east-2"
                     clusterName = "platform-cluster"
-                    mirror = {
+                    providerConfigRefs = {
+                        kubernetes = {
+                            name = "platform-cluster"
+                            kind = "ProviderConfig"
+                        }
+                    }
+                    labels = {
+                        team = "platform"
+                    }
+                    tags = {
+                        team = "platform"
+                    }
+                    distribution = {
                         enabled = True
+                        storage = {
+                            bucketName = "platform-registry-cache"
+                            rootPrefix = "distribution"
+                        }
+                        podIdentity = {
+                            rolePrefix = "platform-"
+                        }
+                        gateway = {
+                            enabled = True
+                            hostname = "rc.internal.example.com"
+                            gatewayRef = {
+                                name = "platform"
+                                namespace = "istio-ingress"
+                                sectionNames = [
+                                    "https-apex"
+                                ]
+                            }
+                        }
+                        upstreams = [
+                            {
+                                name = "docker-hub"
+                                sourceRegistry = "registry-1.docker.io"
+                                matchPrefix = "docker.io"
+                                remoteUrl = "https://registry-1.docker.io"
+                                rewrite = {
+                                    enabled = True
+                                }
+                            }
+                            {
+                                name = "xpkg-upbound"
+                                sourceRegistry = "xpkg.upbound.io"
+                            }
+                        ]
                     }
                 }
             }
@@ -324,13 +228,256 @@ _items = [
                 {
                     apiVersion = "aws.hops.ops.com.ai/v1alpha1"
                     kind = "PodIdentity"
-                    metadata.name = "platform-mirror"
+                    metadata.name = "platform-distribution"
                     spec = {
-                        region = "us-east-2"
                         clusterName = "platform-cluster"
+                        region = "us-east-2"
+                        rolePrefix = "platform-"
                         serviceAccount = {
-                            name = "platform-mirror"
+                            name = "platform-distribution"
                             namespace = "crossplane-system"
+                        }
+                        providerConfigRef = {
+                            name = "default"
+                            kind = "ProviderConfig"
+                        }
+                        inlinePolicy = [
+                            {
+                                name = "distribution-s3-cache"
+                            }
+                        ]
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-docker-hub-deploy"
+                    spec = {
+                        providerConfigRef = {
+                            name = "platform-cluster"
+                            kind = "ProviderConfig"
+                        }
+                        forProvider.manifest.spec.template.metadata.annotations = {
+                            "hops.ops.com.ai/pod-identity-association-id" = "pending"
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-docker-hub-root-httproute"
+                    spec = {
+                        providerConfigRef = {
+                            name = "platform-cluster"
+                            kind = "ProviderConfig"
+                        }
+                        forProvider.manifest = {
+                            apiVersion = "gateway.networking.k8s.io/v1"
+                            kind = "HTTPRoute"
+                            metadata = {
+                                name = "platform-dist-docker-hub-root"
+                                namespace = "crossplane-system"
+                            }
+                            spec = {
+                                parentRefs = [
+                                    {
+                                        name = "platform"
+                                        namespace = "istio-ingress"
+                                        sectionName = "https-apex"
+                                    }
+                                ]
+                                hostnames = [
+                                    "rc.internal.example.com"
+                                ]
+                                rules = [
+                                    {
+                                        matches = [
+                                            {
+                                                path = {
+                                                    type = "PathPrefix"
+                                                    value = "/v2"
+                                                }
+                                            }
+                                        ]
+                                        backendRefs = [
+                                            {
+                                                name = "platform-dist-docker-hub"
+                                                port = 5000
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-docker-hub-httproute"
+                    spec = {
+                        providerConfigRef = {
+                            name = "platform-cluster"
+                            kind = "ProviderConfig"
+                        }
+                        forProvider.manifest = {
+                            apiVersion = "gateway.networking.k8s.io/v1"
+                            kind = "HTTPRoute"
+                            metadata = {
+                                name = "platform-dist-docker-hub"
+                                namespace = "crossplane-system"
+                            }
+                            spec = {
+                                parentRefs = [
+                                    {
+                                        name = "platform"
+                                        namespace = "istio-ingress"
+                                        sectionName = "https-apex"
+                                    }
+                                ]
+                                hostnames = [
+                                    "rc.internal.example.com"
+                                ]
+                                rules = [
+                                    {
+                                        matches = [
+                                            {
+                                                path = {
+                                                    type = "PathPrefix"
+                                                    value = "/v2/docker-io"
+                                                }
+                                            }
+                                        ]
+                                        filters = [
+                                            {
+                                                type = "URLRewrite"
+                                                urlRewrite = {
+                                                    path = {
+                                                        type = "ReplacePrefixMatch"
+                                                        replacePrefixMatch = "/v2"
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                        backendRefs = [
+                                            {
+                                                name = "platform-dist-docker-hub"
+                                                port = 5000
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-docker-hub-imgcfg"
+                    spec = {
+                        providerConfigRef = {
+                            name = "platform-cluster"
+                            kind = "ProviderConfig"
+                        }
+                        forProvider.manifest = {
+                            apiVersion = "pkg.crossplane.io/v1beta1"
+                            kind = "ImageConfig"
+                            metadata.name = "platform-dist-docker-hub"
+                            spec = {
+                                matchImages = [
+                                    {
+                                        prefix = "docker.io"
+                                        type = "Prefix"
+                                    }
+                                ]
+                                rewriteImage = {
+                                    prefix = "rc.internal.example.com/docker-io"
+                                }
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-xpkg-upbound-config"
+                    spec.forProvider.manifest = {
+                        apiVersion = "v1"
+                        kind = "ConfigMap"
+                        metadata.name = "platform-dist-xpkg-upbound"
+                    }
+                }
+            ]
+        }
+    }
+
+    {
+        apiVersion = "meta.dev.upbound.io/v1alpha1"
+        kind = "CompositionTest"
+        metadata.name = "distribution-supports-custom-service-and-imageconfig"
+        spec = {
+            compositionPath = _composition
+            xrdPath = _xrd
+            timeoutSeconds = 60
+            validate = False
+            xr = {
+                apiVersion = "aws.hops.ops.com.ai/v1alpha1"
+                kind = "RegistryCache"
+                metadata.name = "platform"
+                metadata.namespace = "default"
+                spec = {
+                    accountId = "123456789012"
+                    region = "us-east-2"
+                    distribution = {
+                        enabled = True
+                        podIdentity = {
+                            enabled = False
+                        }
+                        upstreams = [
+                            {
+                                name = "ghcr"
+                                sourceRegistry = "ghcr.io"
+                                service = {
+                                    type = "NodePort"
+                                    port = 5050
+                                }
+                                rewrite = {
+                                    enabled = True
+                                    imageConfigName = "ghcr-cache"
+                                    prefix = "registry-cache.internal:5050"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+            assertResources = [
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-ghcr-service"
+                    spec.forProvider.manifest.spec = {
+                        type = "NodePort"
+                        ports = [
+                            {
+                                name = "registry"
+                                port = 5050
+                                targetPort = "registry"
+                            }
+                        ]
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-dist-ghcr-imgcfg"
+                    spec.forProvider.manifest = {
+                        apiVersion = "pkg.crossplane.io/v1beta1"
+                        kind = "ImageConfig"
+                        metadata.name = "ghcr-cache"
+                        spec.rewriteImage = {
+                            prefix = "registry-cache.internal:5050"
                         }
                     }
                 }

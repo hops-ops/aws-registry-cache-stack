@@ -1,0 +1,100 @@
+# code: language=yaml
+#
+# S3 storage for Distribution proxy caches.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if and $cache.distribution.render $cache.distribution.renderBucket }}
+---
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: {{ $cache.distribution.resourceName }}-bucket
+  annotations:
+    {{ setResourceNameAnnotation "distribution-bucket" }}
+    crossplane.io/external-name: {{ $cache.distribution.storage.bucketName }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    region: {{ $cache.region }}
+    tags:
+      {{ $cache.tags | toYaml | nindent 6 }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.aws.name }}
+    kind: {{ $cache.providerConfigRefs.aws.kind }}
+---
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: BucketPublicAccessBlock
+metadata:
+  name: {{ $cache.distribution.resourceName }}-bucket-pab
+  annotations:
+    {{ setResourceNameAnnotation "distribution-bucket-pab" }}
+    crossplane.io/external-name: {{ $cache.distribution.storage.bucketName }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    region: {{ $cache.region }}
+    bucket: {{ $cache.distribution.storage.bucketName }}
+    bucketRef:
+      name: {{ $cache.distribution.resourceName }}-bucket
+    blockPublicAcls: true
+    blockPublicPolicy: true
+    ignorePublicAcls: true
+    restrictPublicBuckets: true
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.aws.name }}
+    kind: {{ $cache.providerConfigRefs.aws.kind }}
+---
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: BucketServerSideEncryptionConfiguration
+metadata:
+  name: {{ $cache.distribution.resourceName }}-bucket-encryption
+  annotations:
+    {{ setResourceNameAnnotation "distribution-bucket-encryption" }}
+    crossplane.io/external-name: {{ $cache.distribution.storage.bucketName }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    region: {{ $cache.region }}
+    bucket: {{ $cache.distribution.storage.bucketName }}
+    bucketRef:
+      name: {{ $cache.distribution.resourceName }}-bucket
+    rule:
+      - applyServerSideEncryptionByDefault:
+          sseAlgorithm: AES256
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.aws.name }}
+    kind: {{ $cache.providerConfigRefs.aws.kind }}
+{{- if $cache.distribution.storage.lifecycle.enabled }}
+---
+apiVersion: s3.aws.m.upbound.io/v1beta1
+kind: BucketLifecycleConfiguration
+metadata:
+  name: {{ $cache.distribution.resourceName }}-bucket-lifecycle
+  annotations:
+    {{ setResourceNameAnnotation "distribution-bucket-lifecycle" }}
+    crossplane.io/external-name: {{ $cache.distribution.storage.bucketName }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    region: {{ $cache.region }}
+    bucket: {{ $cache.distribution.storage.bucketName }}
+    bucketRef:
+      name: {{ $cache.distribution.resourceName }}-bucket
+    transitionDefaultMinimumObjectSize: all_storage_classes_128K
+    rule:
+      - id: abort-incomplete-multipart-uploads
+        status: Enabled
+        filter:
+          - prefix: ""
+        abortIncompleteMultipartUpload:
+          - daysAfterInitiation: {{ $cache.distribution.storage.lifecycle.abortIncompleteMultipartUploadDays }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.aws.name }}
+    kind: {{ $cache.providerConfigRefs.aws.kind }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,38 @@
+# code: language=yaml
+#
+# Crossplane package ImageConfig rewrites to Distribution proxy caches.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.render }}
+{{- range $upstream := $cache.distribution.upstreams }}
+{{- if $upstream.rewrite.enabled }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.imageConfigResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-imageconfig-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: pkg.crossplane.io/v1beta1
+      kind: ImageConfig
+      metadata:
+        name: {{ $upstream.rewrite.imageConfigName }}
+        labels: {{ $upstream.labels | toJson }}
+      spec:
+        matchImages:
+          - type: Prefix
+            prefix: {{ $upstream.matchPrefix | quote }}
+        rewriteImage:
+          prefix: {{ $upstream.rewrite.prefix | quote }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}
+{{- end }}

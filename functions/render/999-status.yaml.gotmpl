@@ -10,25 +10,10 @@ apiVersion: {{ $xr.apiVersion }}
 kind: {{ $xr.kind }}
 status:
   ready: {{ $s.ready }}
-  registry:
-    id: {{ $s.registry.id | quote }}
-    host: {{ $s.registry.host }}
-  pullThrough:
-    enabled: {{ $s.pullThrough.enabled }}
-    ready: {{ $s.pullThrough.ready }}
-    scanning:
-      enabled: {{ $s.pullThrough.scanning.enabled }}
-      scanType: {{ $s.pullThrough.scanning.scanType | quote }}
-    rules:
-      {{- toYaml $s.pullThrough.rules | nindent 6 }}
-  mirror:
-    enabled: {{ $s.mirror.enabled }}
-    ready: {{ $s.mirror.ready }}
-    namespace: {{ $s.mirror.namespace }}
-    schedule: {{ $s.mirror.schedule | quote }}
-    targetRegistry: {{ $s.mirror.targetRegistry }}
-    configuredRepositories: {{ $s.mirror.configuredRepositories }}
-    discoveryEnabled: {{ $s.mirror.discoveryEnabled }}
-    podIdentityEnabled: {{ $s.mirror.podIdentityEnabled }}
-    lifecyclePolicyEnabled: {{ $s.mirror.lifecyclePolicyEnabled }}
-    repositoryCreationTemplates: {{ $s.mirror.repositoryCreationTemplates }}
+  distribution:
+    enabled: {{ $s.distribution.enabled }}
+    ready: {{ $s.distribution.ready }}
+    namespace: {{ $s.distribution.namespace }}
+    bucketName: {{ $s.distribution.bucketName }}
+    upstreams:
+      {{- toYaml $s.distribution.upstreams | nindent 6 }}

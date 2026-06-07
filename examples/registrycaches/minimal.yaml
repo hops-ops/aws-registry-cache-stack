@@ -6,16 +6,10 @@ metadata:
 spec:
   accountId: "123456789012"
   region: us-east-2
-  pullThrough:
+  distribution:
     enabled: true
-    rules:
-      - name: ecr-public
-        ecrRepositoryPrefix: ecr-public
-        upstreamRegistryUrl: public.ecr.aws
-        repositoryCreationTemplate:
-          enabled: true
-      - name: kubernetes
-        ecrRepositoryPrefix: kubernetes
-        upstreamRegistryUrl: registry.k8s.io
-        repositoryCreationTemplate:
-          enabled: true
+    podIdentity:
+      enabled: false
+    upstreams:
+      - name: xpkg-crossplane
+        sourceRegistry: xpkg.crossplane.io

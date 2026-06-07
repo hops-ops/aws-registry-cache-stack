@@ -1,106 +1,138 @@
 # code: language=yaml
 #
-# Compute derived registry cache stack values.
+# Compute derived registry cache values.
 #
 
 {{- $eff := $state.spec.effective }}
-{{- $mirror := $eff.mirror }}
-{{- $pullThrough := $eff.pullThrough }}
+{{- $distribution := $eff.distribution }}
 
-{{- $renderPullThrough := and $pullThrough.enabled (gt (len $pullThrough.rules) 0) }}
-{{- $renderMirror := $mirror.enabled }}
-{{- $renderPodIdentity := and $renderMirror $mirror.podIdentity.enabled }}
+{{- $renderDistribution := and $distribution.enabled (gt (len $distribution.upstreams) 0) }}
+{{- $renderDistributionPodIdentity := and $renderDistribution $distribution.podIdentity.enabled }}
+{{- $renderDistributionBucket := and $renderDistribution $distribution.storage.createBucket }}
+{{- $renderDistributionNamespace := and $renderDistribution $distribution.createNamespace }}
 
-{{- $pullThroughRules := list }}
-{{- $pullThroughResourceRules := list }}
-{{- range $rule := $pullThrough.rules }}
-  {{- $templateSpec := $rule.repositoryCreationTemplate | default dict }}
-  {{- $templateEnabled := false }}
-  {{- if hasKey $templateSpec "enabled" }}
-    {{- $templateEnabled = $templateSpec.enabled }}
+{{- $distributionResourceName := trimAll "-" (trunc 63 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-distribution" $eff.name)) "-")) }}
+{{- $distributionUpstreams := list }}
+{{- $distributionObjectArns := list }}
+{{- $distributionGateway := $distribution.gateway | default dict }}
+{{- $distributionGatewayRootRoutes := list }}
+{{- $distributionGatewayRootRouteKeys := dict }}
+{{- range $upstream := $distribution.upstreams }}
+  {{- $serviceSpec := $upstream.service | default dict }}
+  {{- $servicePort := $serviceSpec.port | default 5000 }}
+  {{- $baseName := trimAll "-" (trunc 45 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-dist-%s" $eff.name $upstream.name)) "-")) }}
+  {{- $defaultRemoteUrl := printf "https://%s" $upstream.sourceRegistry }}
+  {{- if eq $upstream.sourceRegistry "xpkg.crossplane.io" }}
+    {{- $defaultRemoteUrl = "https://ghcr.io" }}
   {{- end }}
-  {{- $ruleState := dict
-    "name" $rule.name
-    "resourceName" (printf "%s-%s" $eff.name $rule.name)
-    "ecrRepositoryPrefix" $rule.ecrRepositoryPrefix
-    "upstreamRegistryUrl" $rule.upstreamRegistryUrl
-    "credentialArn" ($rule.credentialArn | default "")
-    "customRoleArn" ($rule.customRoleArn | default "")
-    "upstreamRepositoryPrefix" ($rule.upstreamRepositoryPrefix | default "")
-    "forProvider" ($rule.forProvider | default dict)
-    "pullPrefix" (printf "%s/%s" $eff.registryHost $rule.ecrRepositoryPrefix)
-    "repositoryCreationTemplate" (dict
-      "enabled" $templateEnabled
-      "description" ($templateSpec.description | default "")
-      "customRoleArn" ($templateSpec.customRoleArn | default "")
-      "encryptionConfiguration" ($templateSpec.encryptionConfiguration | default list)
-      "imageTagMutability" ($templateSpec.imageTagMutability | default "")
-      "imageTagMutabilityExclusionFilter" ($templateSpec.imageTagMutabilityExclusionFilter | default list)
-      "lifecyclePolicy" ($templateSpec.lifecyclePolicy | default "")
-      "repositoryPolicy" ($templateSpec.repositoryPolicy | default "")
-      "resourceTags" ($templateSpec.resourceTags | default dict)
-    )
-  }}
-  {{- $pullThroughResourceRules = append $pullThroughResourceRules $ruleState }}
-  {{- $pullThroughRules = append $pullThroughRules (dict
-    "name" $ruleState.name
-    "pullPrefix" $ruleState.pullPrefix
-  ) }}
-{{- end }}
-
-{{- $ecrRepositoryArns := list }}
-{{- range $sourceRegistry, $prefix := $mirror.target.prefixes }}
-  {{- if $prefix }}
-    {{- $ecrRepositoryArns = append $ecrRepositoryArns (printf "arn:aws:ecr:%s:%s:repository/%s/*" $eff.region $eff.accountId $prefix) }}
+  {{- $remoteUrl := $upstream.remoteUrl | default $defaultRemoteUrl }}
+  {{- $matchPrefix := $upstream.matchPrefix | default $upstream.sourceRegistry }}
+  {{- $rootDirectoryDefault := printf "/%s/%s" $distribution.storage.rootPrefix $upstream.name }}
+  {{- if eq $distribution.storage.rootPrefix "" }}
+    {{- $rootDirectoryDefault = printf "/%s" $upstream.name }}
   {{- end }}
-{{- end }}
-
-{{- $mirrorConfig := dict
-  "accountId" $eff.accountId
-  "region" $eff.region
-  "tool" $mirror.tool
-  "target" $mirror.target
-  "discovery" $mirror.discovery
-  "repositories" $mirror.repositories
-  "tags" $mirror.tags
-  "regsync" $mirror.regsync
-}}
-{{- if $mirror.lifecyclePolicy.enabled }}
-  {{- $mirrorConfig = set $mirrorConfig "repositoryCreation" (dict
-    "createRepositories" false
-    "mode" "create-on-push"
-  ) }}
-{{- end }}
-
-{{- $mirrorRepositoryCreationTemplates := list }}
-{{- if and $renderMirror $mirror.lifecyclePolicy.enabled }}
-  {{- range $sourceRegistry, $prefix := $mirror.target.prefixes }}
-    {{- if $prefix }}
-      {{- $prefixName := regexReplaceAll "[^a-z0-9-]+" (lower $prefix) "-" }}
-      {{- $prefixName = trimAll "-" $prefixName }}
-      {{- $prefixName = trunc 40 $prefixName }}
-      {{- $resourceName := printf "%s-mirror-%s" $eff.name $prefixName }}
-      {{- $mirrorRepositoryCreationTemplates = append $mirrorRepositoryCreationTemplates (dict
-        "resourceName" $resourceName
-        "resourceKey" (printf "mirror-template-%s" $prefixName)
-        "sourceRegistry" $sourceRegistry
-        "prefix" $prefix
-        "lifecyclePolicy" $mirror.lifecyclePolicy.policy
+  {{- $rootDirectory := $upstream.rootDirectory | default $rootDirectoryDefault }}
+  {{- $rootDirectory = printf "/%s" (trimAll "/" $rootDirectory) }}
+  {{- if eq $rootDirectory "/" }}
+    {{- $rootDirectory = "" }}
+  {{- end }}
+  {{- $objectPrefix := trimAll "/" $rootDirectory }}
+  {{- $objectArn := printf "arn:aws:s3:::%s/*" $distribution.storage.bucketName }}
+  {{- if ne $objectPrefix "" }}
+    {{- $objectArn = printf "arn:aws:s3:::%s/%s/*" $distribution.storage.bucketName $objectPrefix }}
+  {{- end }}
+  {{- $distributionObjectArns = append $distributionObjectArns $objectArn }}
+  {{- $rewriteSpec := $upstream.rewrite | default dict }}
+  {{- $rewriteEnabled := false }}
+  {{- if hasKey $rewriteSpec "enabled" }}
+    {{- $rewriteEnabled = $rewriteSpec.enabled }}
+  {{- end }}
+  {{- $gatewaySpec := $upstream.gateway | default dict }}
+  {{- $gatewayEnabled := $distributionGateway.enabled | default false }}
+  {{- if hasKey $gatewaySpec "enabled" }}
+    {{- $gatewayEnabled = $gatewaySpec.enabled }}
+  {{- end }}
+  {{- $gatewayHostname := $gatewaySpec.hostname | default ($distributionGateway.hostname | default "") }}
+  {{- $gatewayPort := $distributionGateway.port | default 443 }}
+  {{- $gatewayRef := $distributionGateway.gatewayRef | default dict }}
+  {{- if and $gatewayEnabled (eq $gatewayHostname "") }}
+    {{- fail (printf "spec.distribution.upstreams[%s].gateway.hostname or spec.distribution.gateway.hostname is required when gateway exposure is enabled" $upstream.name) }}
+  {{- end }}
+  {{- $gatewayPathPrefixDefault := trimAll "-" (regexReplaceAll "[^a-z0-9]+" (lower $matchPrefix) "-") }}
+  {{- if eq $gatewayPathPrefixDefault "" }}
+    {{- $gatewayPathPrefixDefault = $upstream.name }}
+  {{- end }}
+  {{- $gatewayPathPrefix := trimAll "/" ($gatewaySpec.pathPrefix | default $gatewayPathPrefixDefault) }}
+  {{- if and $gatewayEnabled (eq $gatewayPathPrefix "") }}
+    {{- fail (printf "spec.distribution.upstreams[%s].gateway.pathPrefix must not be empty when gateway exposure is enabled" $upstream.name) }}
+  {{- end }}
+  {{- $gatewayRegistryPrefix := "" }}
+  {{- $gatewayRoutePathPrefix := "" }}
+  {{- if $gatewayEnabled }}
+    {{- $gatewayRegistryHost := $gatewayHostname }}
+    {{- if ne $gatewayPort 443 }}
+      {{- $gatewayRegistryHost = printf "%s:%d" $gatewayHostname $gatewayPort }}
+    {{- end }}
+    {{- $gatewayRegistryPrefix = printf "%s/%s" $gatewayRegistryHost $gatewayPathPrefix }}
+    {{- $gatewayRoutePathPrefix = printf "/v2/%s" $gatewayPathPrefix }}
+    {{- $rootRouteKey := printf "%s:%d" $gatewayHostname $gatewayPort }}
+    {{- if not (hasKey $distributionGatewayRootRouteKeys $rootRouteKey) }}
+      {{- $_ := set $distributionGatewayRootRouteKeys $rootRouteKey true }}
+      {{- $distributionGatewayRootRoutes = append $distributionGatewayRootRoutes (dict
+        "name" $upstream.name
+        "resourceName" (printf "%s-root" $baseName)
+        "httpRouteResourceName" (printf "%s-root-httproute" $baseName)
+        "hostname" $gatewayHostname
+        "port" $gatewayPort
+        "gatewayRef" $gatewayRef
+        "backendServiceName" $baseName
+        "backendServicePort" $servicePort
+        "labels" (mergeOverwrite (dict) $eff.labels (dict "hops.ops.com.ai/distribution-upstream" $upstream.name))
       ) }}
     {{- end }}
   {{- end }}
-{{- end }}
-
-# Default scan filters target only the pull-through prefixes owned by this XR.
-{{- $repositoryFilters := $pullThrough.enhancedScanning.repositoryFilters | default list }}
-{{- if eq (len $repositoryFilters) 0 }}
-  {{- $repositoryFilters = list }}
-  {{- range $rule := $pullThroughResourceRules }}
-    {{- $repositoryFilters = append $repositoryFilters (dict
-      "filter" (printf "%s/*" $rule.ecrRepositoryPrefix)
-      "filterType" "WILDCARD"
-    ) }}
+  {{- $defaultRewritePrefix := $gatewayRegistryPrefix }}
+  {{- $rewritePrefix := $rewriteSpec.prefix | default $defaultRewritePrefix }}
+  {{- if and $rewriteEnabled (eq $rewritePrefix "") }}
+    {{- fail (printf "spec.distribution.upstreams[%s].rewrite.prefix is required when rewrite.enabled is true unless gateway exposure is enabled" $upstream.name) }}
   {{- end }}
+  {{- $distributionUpstreams = append $distributionUpstreams (dict
+    "name" $upstream.name
+    "resourceName" $baseName
+    "configResourceName" (printf "%s-config" $baseName)
+    "deploymentResourceName" (printf "%s-deploy" $baseName)
+    "serviceResourceName" (printf "%s-service" $baseName)
+    "imageConfigResourceName" (printf "%s-imgcfg" $baseName)
+    "httpRouteResourceName" (printf "%s-httproute" $baseName)
+    "sourceRegistry" $upstream.sourceRegistry
+    "matchPrefix" $matchPrefix
+    "remoteUrl" $remoteUrl
+    "ttl" ($upstream.ttl | default "168h")
+    "rootDirectory" $rootDirectory
+    "objectArn" $objectArn
+    "service" (dict
+      "name" $baseName
+      "type" ($serviceSpec.type | default "ClusterIP")
+      "port" $servicePort
+    )
+    "gateway" (dict
+      "enabled" $gatewayEnabled
+      "hostname" $gatewayHostname
+      "port" $gatewayPort
+      "pathPrefix" $gatewayPathPrefix
+      "routePathPrefix" $gatewayRoutePathPrefix
+      "rewritePathPrefix" "/v2"
+      "httpRouteName" $baseName
+      "gatewayRef" $gatewayRef
+    )
+    "rewrite" (dict
+      "enabled" $rewriteEnabled
+      "prefix" $rewritePrefix
+      "imageConfigName" ($rewriteSpec.imageConfigName | default $baseName)
+    )
+    "resources" ($upstream.resources | default dict)
+    "labels" (mergeOverwrite (dict) $eff.labels (dict "hops.ops.com.ai/distribution-upstream" $upstream.name))
+  ) }}
 {{- end }}
 
 {{- $state = set $state "registryCache" (dict
@@ -108,28 +140,21 @@
   "accountId" $eff.accountId
   "region" $eff.region
   "clusterName" $eff.clusterName
-  "registryHost" $eff.registryHost
   "managementPolicies" $eff.managementPolicies
   "providerConfigRefs" $eff.providerConfigRefs
   "labels" $eff.labels
   "tags" $eff.tags
-  "pullThrough" (dict
-    "enabled" $pullThrough.enabled
-    "render" $renderPullThrough
-    "rules" $pullThroughResourceRules
-    "statusRules" $pullThroughRules
-    "enhancedScanning" (dict
-      "enabled" ($pullThrough.enhancedScanning.enabled | default false)
-      "scanFrequency" ($pullThrough.enhancedScanning.scanFrequency | default "CONTINUOUS_SCAN")
-      "repositoryFilters" $repositoryFilters
-    )
-  )
-  "mirror" (merge (dict) $mirror (dict
-    "render" $renderMirror
-    "renderPodIdentity" $renderPodIdentity
-    "resourceName" (printf "%s-mirror" $eff.name)
-    "config" $mirrorConfig
-    "ecrRepositoryArns" $ecrRepositoryArns
-    "repositoryCreationTemplates" $mirrorRepositoryCreationTemplates
+  "distribution" (mergeOverwrite (dict) $distribution (dict
+    "render" $renderDistribution
+    "renderNamespace" $renderDistributionNamespace
+    "renderBucket" $renderDistributionBucket
+    "renderPodIdentity" $renderDistributionPodIdentity
+    "resourceName" $distributionResourceName
+    "upstreams" $distributionUpstreams
+    "gateway" (mergeOverwrite (dict) $distributionGateway (dict
+      "rootRoutes" $distributionGatewayRootRoutes
+    ))
+    "bucketArn" (printf "arn:aws:s3:::%s" $distribution.storage.bucketName)
+    "objectArns" $distributionObjectArns
   ))
 ) }}

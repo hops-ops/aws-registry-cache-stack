@@ -13,7 +13,7 @@ E2E_TESTS := $(wildcard tests/e2etest-*)
 # Format: example_path::observed_resources_path (observed_resources_path is optional)
 EXAMPLES := \
     examples/registrycaches/minimal.yaml:: \
-    examples/registrycaches/mirror.yaml:: \
+    examples/registrycaches/crossplane-packages.yaml:: \
     examples/registrycaches/standard.yaml::
 
 clean:

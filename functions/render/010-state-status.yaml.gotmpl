@@ -5,99 +5,76 @@
 
 {{- $cache := $state.registryCache }}
 {{- $readyMap := $state.observed.ready | default dict }}
-{{- $rawObserved := $state.observed.raw | default dict }}
 
-{{- $pullThroughReady := true }}
-{{- $registryId := "" }}
-{{- $pullThroughRules := list }}
-{{- if $cache.pullThrough.render }}
-  {{- range $rule := $cache.pullThrough.rules }}
-    {{- $ruleObs := get ($state.observed.rules | default dict) $rule.name | default dict }}
-    {{- $templateObs := get ($state.observed.templates | default dict) $rule.name | default dict }}
-    {{- $ruleReady := $ruleObs.ready | default false }}
-    {{- if not $ruleReady }}
-      {{- $pullThroughReady = false }}
-    {{- end }}
-    {{- if and $rule.repositoryCreationTemplate.enabled (not ($templateObs.ready | default false)) }}
-      {{- $pullThroughReady = false }}
-    {{- end }}
-    {{- if and (eq $registryId "") ($ruleObs.registryId | default "") }}
-      {{- $registryId = $ruleObs.registryId }}
-    {{- end }}
-    {{- $pullThroughRules = append $pullThroughRules (dict
-      "name" $rule.name
-      "ready" $ruleReady
-      "ecrRepositoryPrefix" ($ruleObs.ecrRepositoryPrefix | default $rule.ecrRepositoryPrefix)
-      "upstreamRegistryUrl" ($ruleObs.upstreamRegistryUrl | default $rule.upstreamRegistryUrl)
-      "pullPrefix" $rule.pullPrefix
-      "createdAt" ($ruleObs.createdAt | default "")
-    ) }}
+{{- $distributionReady := true }}
+{{- $distributionUpstreams := list }}
+{{- if $cache.distribution.render }}
+  {{- if and $cache.distribution.renderNamespace (not (get $readyMap "distribution-namespace" | default false)) }}
+    {{- $distributionReady = false }}
   {{- end }}
-  {{- if $cache.pullThrough.enhancedScanning.enabled }}
-    {{- if not ($state.observed.scanning.ready | default false) }}
-      {{- $pullThroughReady = false }}
-    {{- end }}
-  {{- end }}
-{{- else }}
-  {{- $pullThroughRules = $cache.pullThrough.statusRules }}
-{{- end }}
-
-{{- $mirrorReady := true }}
-{{- if $cache.mirror.render }}
-  {{- range $key := list "mirror-service-account" "mirror-cluster-role" "mirror-cluster-role-binding" "mirror-config" "mirror-cronjob" }}
-    {{- if not (get $readyMap $key | default false) }}
-      {{- $mirrorReady = false }}
-    {{- end }}
-  {{- end }}
-  {{- if and $cache.mirror.createNamespace (not (get $readyMap "mirror-namespace" | default false)) }}
-    {{- $mirrorReady = false }}
-  {{- end }}
-  {{- if and $cache.mirror.renderPodIdentity (not (get $readyMap "pod-identity" | default false)) }}
-    {{- $mirrorReady = false }}
-  {{- end }}
-  {{- range $template := $cache.mirror.repositoryCreationTemplates }}
-    {{- $entry := get $rawObserved $template.resourceKey | default dict }}
-    {{- $resource := $entry.resource | default dict }}
-    {{- $status := $resource.status | default dict }}
-    {{- $templateReady := false }}
-    {{- range ($status.conditions | default list) }}
-      {{- if and (eq .type "Ready") (eq .status "True") }}
-        {{- $templateReady = true }}
+  {{- if $cache.distribution.renderBucket }}
+    {{- range $key := list "distribution-bucket" "distribution-bucket-pab" "distribution-bucket-encryption" }}
+      {{- if not (get $readyMap $key | default false) }}
+        {{- $distributionReady = false }}
       {{- end }}
     {{- end }}
-    {{- if not $templateReady }}
-      {{- $mirrorReady = false }}
+    {{- if and $cache.distribution.storage.lifecycle.enabled (not (get $readyMap "distribution-bucket-lifecycle" | default false)) }}
+      {{- $distributionReady = false }}
     {{- end }}
+  {{- end }}
+  {{- if not (get $readyMap "distribution-service-account" | default false) }}
+    {{- $distributionReady = false }}
+  {{- end }}
+  {{- if and $cache.distribution.renderPodIdentity (not (get $readyMap "distribution-pod-identity" | default false)) }}
+    {{- $distributionReady = false }}
+  {{- end }}
+  {{- range $route := $cache.distribution.gateway.rootRoutes }}
+    {{- if not (get $readyMap (printf "distribution-root-httproute-%s" $route.name) | default false) }}
+      {{- $distributionReady = false }}
+    {{- end }}
+  {{- end }}
+  {{- range $upstream := $cache.distribution.upstreams }}
+    {{- $upstreamReady := true }}
+    {{- range $key := list
+      (printf "distribution-config-%s" $upstream.name)
+      (printf "distribution-deployment-%s" $upstream.name)
+      (printf "distribution-service-%s" $upstream.name)
+    }}
+      {{- if not (get $readyMap $key | default false) }}
+        {{- $upstreamReady = false }}
+      {{- end }}
+    {{- end }}
+    {{- if and $upstream.gateway.enabled (not (get $readyMap (printf "distribution-httproute-%s" $upstream.name) | default false)) }}
+      {{- $upstreamReady = false }}
+    {{- end }}
+    {{- if and $upstream.rewrite.enabled (not (get $readyMap (printf "distribution-imageconfig-%s" $upstream.name) | default false)) }}
+      {{- $upstreamReady = false }}
+    {{- end }}
+    {{- if not $upstreamReady }}
+      {{- $distributionReady = false }}
+    {{- end }}
+    {{- $distributionUpstreams = append $distributionUpstreams (dict
+      "name" $upstream.name
+      "ready" $upstreamReady
+      "sourceRegistry" $upstream.sourceRegistry
+      "matchPrefix" $upstream.matchPrefix
+      "remoteUrl" $upstream.remoteUrl
+      "serviceName" $upstream.service.name
+      "httpRouteName" $upstream.gateway.httpRouteName
+      "gatewayHostname" $upstream.gateway.hostname
+      "gatewayPathPrefix" $upstream.gateway.pathPrefix
+      "rewritePrefix" $upstream.rewrite.prefix
+    ) }}
   {{- end }}
 {{- end }}
 
-{{- $ready := and $pullThroughReady $mirrorReady }}
-
 {{- $state = set $state "status" (dict
-  "ready" $ready
-  "registry" (dict
-    "id" $registryId
-    "host" $cache.registryHost
-  )
-  "pullThrough" (dict
-    "enabled" $cache.pullThrough.enabled
-    "ready" $pullThroughReady
-    "rules" $pullThroughRules
-    "scanning" (dict
-      "enabled" $cache.pullThrough.enhancedScanning.enabled
-      "scanType" ($state.observed.scanning.scanType | default "")
-    )
-  )
-  "mirror" (dict
-    "enabled" $cache.mirror.enabled
-    "ready" $mirrorReady
-    "namespace" $cache.mirror.namespace
-    "schedule" $cache.mirror.schedule
-    "targetRegistry" $cache.mirror.target.registry
-    "configuredRepositories" (len $cache.mirror.repositories)
-    "discoveryEnabled" $cache.mirror.discovery.crossplanePackages.enabled
-    "podIdentityEnabled" $cache.mirror.renderPodIdentity
-    "lifecyclePolicyEnabled" $cache.mirror.lifecyclePolicy.enabled
-    "repositoryCreationTemplates" (len $cache.mirror.repositoryCreationTemplates)
+  "ready" $distributionReady
+  "distribution" (dict
+    "enabled" $cache.distribution.enabled
+    "ready" $distributionReady
+    "namespace" $cache.distribution.namespace
+    "bucketName" $cache.distribution.storage.bucketName
+    "upstreams" $distributionUpstreams
   )
 ) }}

@@ -1,0 +1,41 @@
+# code: language=yaml
+#
+# Distribution proxy cache services.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.render }}
+{{- range $upstream := $cache.distribution.upstreams }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.serviceResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-service-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ $upstream.service.name }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $upstream.labels | toJson }}
+      spec:
+        type: {{ $upstream.service.type }}
+        selector:
+          app.kubernetes.io/name: {{ $upstream.resourceName }}
+          hops.ops.com.ai/distribution-upstream: {{ $upstream.name }}
+        ports:
+          - name: registry
+            port: {{ $upstream.service.port }}
+            targetPort: registry
+            protocol: TCP
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}

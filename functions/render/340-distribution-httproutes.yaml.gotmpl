@@ -1,0 +1,96 @@
+# code: language=yaml
+#
+# Gateway API routes for node-resolvable registry cache endpoints.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.render }}
+{{- range $route := $cache.distribution.gateway.rootRoutes }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $route.httpRouteResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-root-httproute-%s" $route.name) }}
+  labels: {{ $route.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: {{ $route.resourceName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $route.labels | toJson }}
+      spec:
+        parentRefs:
+        {{- range $sn := $route.gatewayRef.sectionNames }}
+          - name: {{ $route.gatewayRef.name }}
+            namespace: {{ $route.gatewayRef.namespace }}
+            sectionName: {{ $sn }}
+        {{- end }}
+        hostnames:
+          - {{ $route.hostname | quote }}
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /v2
+            backendRefs:
+              - name: {{ $route.backendServiceName }}
+                port: {{ $route.backendServicePort }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- range $upstream := $cache.distribution.upstreams }}
+{{- if $upstream.gateway.enabled }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.httpRouteResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-httproute-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: {{ $upstream.gateway.httpRouteName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $upstream.labels | toJson }}
+      spec:
+        parentRefs:
+        {{- range $sn := $upstream.gateway.gatewayRef.sectionNames }}
+          - name: {{ $upstream.gateway.gatewayRef.name }}
+            namespace: {{ $upstream.gateway.gatewayRef.namespace }}
+            sectionName: {{ $sn }}
+        {{- end }}
+        hostnames:
+          - {{ $upstream.gateway.hostname | quote }}
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: {{ $upstream.gateway.routePathPrefix | quote }}
+            filters:
+              - type: URLRewrite
+                urlRewrite:
+                  path:
+                    type: ReplacePrefixMatch
+                    replacePrefixMatch: {{ $upstream.gateway.rewritePathPrefix | quote }}
+            backendRefs:
+              - name: {{ $upstream.service.name }}
+                port: {{ $upstream.service.port }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}
+{{- end }}

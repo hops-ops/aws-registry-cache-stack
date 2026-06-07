@@ -18,19 +18,19 @@ spec:
     served: true
     schema:
       openAPIV3Schema:
-        description: RegistryCache combines ECR pull-through cache rules with scheduled OCI repository mirroring into ECR.
+        description: RegistryCache manages S3-backed CNCF Distribution proxy caches for OCI registries.
         type: object
         properties:
           spec:
-            description: RegistryCacheSpec defines the registry cache and mirror behavior for one AWS account and region.
+            description: RegistryCacheSpec defines proxy cache behavior for one AWS account, region, and target cluster.
             type: object
             properties:
               accountId:
-                description: AWS account ID for the target private ECR registry.
+                description: AWS account ID used for IAM and default bucket naming.
                 type: string
                 pattern: "^[0-9]{12}$"
               region:
-                description: AWS region where the target private ECR registry lives.
+                description: AWS region for S3 and PodIdentity resources.
                 type: string
                 minLength: 1
               clusterName:
@@ -51,13 +51,13 @@ spec:
                 default:
                 - "*"
               labels:
-                description: Custom labels applied to all composed resources.
+                description: Custom labels applied to all composed Kubernetes resources.
                 type: object
                 additionalProperties:
                   type: string
                 x-kubernetes-preserve-unknown-fields: true
               tags:
-                description: Custom tags passed to taggable composed AWS resources.
+                description: Custom tags passed to taggable AWS resources.
                 type: object
                 additionalProperties:
                   type: string
@@ -88,158 +88,26 @@ spec:
                         - ProviderConfig
                         - ClusterProviderConfig
                         default: ProviderConfig
-              pullThrough:
-                description: ECR pull-through cache rules for AWS-supported upstream registries.
+              distribution:
+                description: CNCF Distribution proxy cache configuration.
                 type: object
                 properties:
                   enabled:
-                    description: Whether to compose direct ECR pull-through cache resources.
-                    type: boolean
-                    default: false
-                  enhancedScanning:
-                    description: Optional registry-wide ECR enhanced scanning configuration.
-                    type: object
-                    properties:
-                      enabled:
-                        type: boolean
-                        default: false
-                      scanFrequency:
-                        type: string
-                        enum:
-                        - CONTINUOUS_SCAN
-                        - SCAN_ON_PUSH
-                        default: CONTINUOUS_SCAN
-                      repositoryFilters:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            filter:
-                              type: string
-                            filterType:
-                              type: string
-                              enum:
-                              - WILDCARD
-                              default: WILDCARD
-                          required:
-                          - filter
-                  rules:
-                    description: Pull-through cache rules.
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          description: Stable name used for composed resource keys and status entries.
-                          type: string
-                          minLength: 1
-                          maxLength: 40
-                          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
-                        ecrRepositoryPrefix:
-                          description: ECR namespace prefix for cached images, such as ghcr or kubernetes.
-                          type: string
-                          minLength: 1
-                        upstreamRegistryUrl:
-                          description: AWS-supported upstream registry URL.
-                          type: string
-                          minLength: 1
-                        credentialArn:
-                          description: Secrets Manager ARN for authenticated upstream registries.
-                          type: string
-                        customRoleArn:
-                          description: IAM role ARN for ECR-to-ECR pull-through cache where required.
-                          type: string
-                        upstreamRepositoryPrefix:
-                          description: Optional upstream repository prefix for supported ECR-to-ECR pull-through cache rules.
-                          type: string
-                        forProvider:
-                          description: Provider-specific PullThroughCacheRule overrides merged after typed defaults.
-                          type: object
-                          x-kubernetes-preserve-unknown-fields: true
-                        repositoryCreationTemplate:
-                          description: Optional ECR repository creation template for repositories auto-created on first pull.
-                          type: object
-                          properties:
-                            enabled:
-                              type: boolean
-                              default: false
-                            description:
-                              type: string
-                            customRoleArn:
-                              type: string
-                            encryptionConfiguration:
-                              type: array
-                              items:
-                                type: object
-                                x-kubernetes-preserve-unknown-fields: true
-                            imageTagMutability:
-                              type: string
-                              enum:
-                              - MUTABLE
-                              - IMMUTABLE
-                              - IMMUTABLE_WITH_EXCLUSION
-                              - MUTABLE_WITH_EXCLUSION
-                            imageTagMutabilityExclusionFilter:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  filter:
-                                    type: string
-                                  filterType:
-                                    type: string
-                                    enum:
-                                    - WILDCARD
-                                    default: WILDCARD
-                                required:
-                                - filter
-                            lifecyclePolicy:
-                              type: string
-                            repositoryPolicy:
-                              type: string
-                            resourceTags:
-                              type: object
-                              additionalProperties:
-                                type: string
-                              x-kubernetes-preserve-unknown-fields: true
-                      required:
-                      - name
-                      - ecrRepositoryPrefix
-                      - upstreamRegistryUrl
-              mirror:
-                description: Scheduled OCI repository mirror into the target ECR registry.
-                type: object
-                properties:
-                  enabled:
-                    description: Whether to render the mirror CronJob and its Kubernetes resources.
+                    description: Whether to render Distribution proxy cache deployments.
                     type: boolean
                     default: false
                   namespace:
-                    description: Namespace for the mirror CronJob. Defaults to crossplane-system.
+                    description: Namespace for Distribution proxy cache deployments. Defaults to crossplane-system.
                     type: string
                     default: crossplane-system
                   createNamespace:
-                    description: Whether this stack should create the mirror namespace.
+                    description: Whether this stack should create the Distribution namespace.
                     type: boolean
                     default: false
-                  schedule:
-                    description: Cron schedule for mirror runs.
-                    type: string
-                    default: "0 */6 * * *"
-                  suspend:
-                    description: Whether to create the CronJob suspended.
-                    type: boolean
-                    default: false
-                  tool:
-                    description: Mirror tool used by the wrapper. Only regsync is supported in v1.
-                    type: string
-                    enum:
-                    - regsync
-                    default: regsync
                   image:
-                    description: Mirror wrapper image. Must include sh, kubectl, jq, aws, regsync, and the ECR credential helper.
+                    description: Distribution registry image.
                     type: string
-                    default: ghcr.io/hops-ops/registry-cache-mirror:latest
+                    default: registry:3
                   imagePullPolicy:
                     type: string
                     enum:
@@ -247,22 +115,17 @@ spec:
                     - IfNotPresent
                     - Never
                     default: IfNotPresent
-                  imagePullSecrets:
-                    description: Optional image pull secrets for the mirror CronJob.
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                      required:
-                      - name
+                  replicas:
+                    description: Number of replicas per upstream proxy cache.
+                    type: integer
+                    minimum: 1
+                    default: 1
                   serviceAccount:
-                    description: Mirror ServiceAccount settings.
+                    description: Distribution ServiceAccount settings.
                     type: object
                     properties:
                       name:
-                        description: ServiceAccount name. Defaults to <xr-name>-mirror.
+                        description: ServiceAccount name. Defaults to <xr-name>-distribution.
                         type: string
                       annotations:
                         type: object
@@ -274,148 +137,12 @@ spec:
                         additionalProperties:
                           type: string
                         x-kubernetes-preserve-unknown-fields: true
-                  target:
-                    description: Target registry and source-registry prefix mapping.
-                    type: object
-                    properties:
-                      registry:
-                        description: Target registry host. Defaults to <account>.dkr.ecr.<region>.amazonaws.com.
-                        type: string
-                      prefixes:
-                        description: Map of source registry host to target ECR repository prefix.
-                        type: object
-                        additionalProperties:
-                          type: string
-                        x-kubernetes-preserve-unknown-fields: true
-                  discovery:
-                    description: Repository discovery configuration.
-                    type: object
-                    properties:
-                      crossplanePackages:
-                        description: Discover repositories from live Crossplane package resources.
-                        type: object
-                        properties:
-                          enabled:
-                            type: boolean
-                            default: true
-                          mode:
-                            description: Discovery output mode. Only repository mode is supported in v1.
-                            type: string
-                            enum:
-                            - repository
-                            default: repository
-                          registries:
-                            description: Source registries eligible for package discovery.
-                            type: array
-                            items:
-                              type: string
-                          namespaces:
-                            description: Reserved for future namespaced package discovery. Crossplane package resources are cluster-scoped today.
-                            type: array
-                            items:
-                              type: string
-                  repositories:
-                    description: Explicit source repositories to mirror. Tags are mirrored repository-wide by default.
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        source:
-                          description: Source repository, with or without tag/digest. It is normalized to registry/repository.
-                          type: string
-                          minLength: 1
-                        tags:
-                          description: Optional repository-specific tag policy.
-                          type: object
-                          properties:
-                            mode:
-                              type: string
-                              enum:
-                              - all
-                              - filtered
-                              default: all
-                            allow:
-                              type: array
-                              items:
-                                type: string
-                            deny:
-                              type: array
-                              items:
-                                type: string
-                            semverRange:
-                              type: array
-                              items:
-                                type: string
-                      required:
-                      - source
-                  tags:
-                    description: Global tag policy used when a repository omits a repository-specific policy. Defaults to release-style tags that start with v.
-                    type: object
-                    default:
-                      mode: filtered
-                      allow:
-                      - "^v.*"
-                    properties:
-                      mode:
-                        type: string
-                        enum:
-                        - all
-                        - filtered
-                        default: filtered
-                      allow:
-                        type: array
-                        items:
-                          type: string
-                      deny:
-                        type: array
-                        items:
-                          type: string
-                      semverRange:
-                        type: array
-                        items:
-                          type: string
-                  lifecyclePolicy:
-                    description: ECR lifecycle policy applied to repositories created by the mirror target prefixes.
-                    type: object
-                    properties:
-                      enabled:
-                        description: Whether to render ECR RepositoryCreationTemplate resources for mirror target prefixes.
-                        type: boolean
-                        default: false
-                      untaggedExpireAfterDays:
-                        description: Number of days to retain untagged images when policy is generated.
-                        type: integer
-                        minimum: 1
-                        default: 1
-                      policy:
-                        description: Optional raw ECR lifecycle policy JSON. Defaults to expiring untagged images after untaggedExpireAfterDays.
-                        type: string
-                  regsync:
-                    description: regsync execution options used by the wrapper.
-                    type: object
-                    properties:
-                      missingOnly:
-                        description: Use regsync once --missing for routine syncs.
-                        type: boolean
-                        default: true
-                      interval:
-                        description: Interval written to generated repository sync entries.
-                        type: string
-                        default: 6h
-                      parallel:
-                        description: Default regsync parallelism.
-                        type: integer
-                        minimum: 1
-                        default: 2
-                      logLevel:
-                        type: string
-                        default: INFO
                   podIdentity:
-                    description: Optional AWS PodIdentity for the mirror job's ECR permissions.
+                    description: Optional AWS PodIdentity for Distribution S3 permissions.
                     type: object
                     properties:
                       enabled:
-                        description: Whether to compose an aws.hops PodIdentity for the mirror ServiceAccount.
+                        description: Whether to compose an aws.hops PodIdentity for the Distribution ServiceAccount.
                         type: boolean
                         default: true
                       rolePrefix:
@@ -424,117 +151,178 @@ spec:
                         type: string
                       permissionsBoundaryArn:
                         type: string
-                  env:
-                    description: Extra environment variables for the mirror container.
-                    type: array
-                    items:
-                      type: object
-                      x-kubernetes-preserve-unknown-fields: true
-                  envFrom:
-                    description: Extra envFrom sources for the mirror container.
-                    type: array
-                    items:
-                      type: object
-                      x-kubernetes-preserve-unknown-fields: true
-                  resources:
-                    description: Container resource requests and limits.
+                  storage:
+                    description: S3 storage settings for Distribution proxy caches.
                     type: object
-                    x-kubernetes-preserve-unknown-fields: true
-                  podSecurityContext:
-                    description: Pod securityContext override.
-                    type: object
-                    x-kubernetes-preserve-unknown-fields: true
-                  securityContext:
-                    description: Container securityContext override.
-                    type: object
-                    x-kubernetes-preserve-unknown-fields: true
-                  nodeSelector:
-                    type: object
-                    additionalProperties:
-                      type: string
-                    x-kubernetes-preserve-unknown-fields: true
-                  tolerations:
-                    type: array
-                    items:
-                      type: object
-                      x-kubernetes-preserve-unknown-fields: true
-                  affinity:
-                    type: object
-                    x-kubernetes-preserve-unknown-fields: true
-                  concurrencyPolicy:
-                    type: string
-                    enum:
-                    - Allow
-                    - Forbid
-                    - Replace
-                    default: Forbid
-                  startingDeadlineSeconds:
-                    type: integer
-                    minimum: 0
-                  successfulJobsHistoryLimit:
-                    type: integer
-                    minimum: 0
-                    default: 1
-                  failedJobsHistoryLimit:
-                    type: integer
-                    minimum: 0
-                    default: 3
-                  backoffLimit:
-                    type: integer
-                    minimum: 0
-                    default: 1
-                  activeDeadlineSeconds:
-                    type: integer
-                    minimum: 1
-                    default: 7200
-            required:
-            - accountId
-            - region
-          status:
-            description: RegistryCacheStatus exposes configured registry cache outputs and composed readiness.
-            type: object
-            properties:
-              ready:
-                type: boolean
-              registry:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  host:
-                    type: string
-              pullThrough:
-                type: object
-                properties:
-                  enabled:
-                    type: boolean
-                  ready:
-                    type: boolean
-                  scanning:
+                    properties:
+                      bucketName:
+                        description: S3 bucket name. Defaults to a sanitized account/region/XR-derived name.
+                        type: string
+                      createBucket:
+                        description: Whether this stack should create and protect the S3 bucket.
+                        type: boolean
+                        default: true
+                      rootPrefix:
+                        description: Shared S3 key prefix for Distribution cache objects.
+                        type: string
+                        default: distribution
+                      encrypt:
+                        description: Enable S3 server-side encryption in the Distribution storage driver.
+                        type: boolean
+                        default: true
+                      secure:
+                        description: Use HTTPS for S3 API calls from Distribution.
+                        type: boolean
+                        default: true
+                      v4Auth:
+                        description: Use AWS Signature Version 4 for S3 API calls.
+                        type: boolean
+                        default: true
+                      regionEndpoint:
+                        description: Optional custom S3-compatible endpoint.
+                        type: string
+                      forcePathStyle:
+                        description: Use path-style addressing for S3-compatible endpoints.
+                        type: boolean
+                        default: false
+                      lifecycle:
+                        description: Optional S3 lifecycle settings for cache storage hygiene.
+                        type: object
+                        properties:
+                          enabled:
+                            description: Whether to render an S3 lifecycle configuration.
+                            type: boolean
+                            default: true
+                          abortIncompleteMultipartUploadDays:
+                            description: Days before aborting incomplete multipart uploads.
+                            type: integer
+                            minimum: 1
+                            default: 7
+                  gateway:
+                    description: Optional Gateway API exposure through an existing trusted Istio Gateway. This keeps Distribution Services internal while giving node image pulls a DNS-resolvable HTTPS endpoint.
                     type: object
                     properties:
                       enabled:
+                        description: Whether to render HTTPRoutes for upstream proxy caches. Defaults to false.
                         type: boolean
-                      scanType:
+                        default: false
+                      hostname:
+                        description: Shared registry cache hostname served by the existing Gateway, such as rc.example.com. Required when gateway exposure is enabled unless every upstream sets gateway.hostname.
                         type: string
-                  rules:
+                      port:
+                        description: External registry port used in generated ImageConfig prefixes. Defaults to 443.
+                        type: integer
+                        minimum: 1
+                        maximum: 65535
+                        default: 443
+                      gatewayRef:
+                        description: Gateway API parentRef that HTTPRoutes attach to.
+                        type: object
+                        properties:
+                          name:
+                            description: Gateway metadata.name. Defaults to platform.
+                            type: string
+                            default: platform
+                          namespace:
+                            description: Gateway namespace. Defaults to istio-ingress.
+                            type: string
+                            default: istio-ingress
+                          sectionNames:
+                            description: Gateway listener section names. Defaults to [https-apex].
+                            type: array
+                            items:
+                              type: string
+                            default:
+                            - https-apex
+                  upstreams:
+                    description: Upstream registries to proxy. Each upstream renders one Distribution deployment.
                     type: array
                     items:
                       type: object
                       properties:
                         name:
+                          description: Stable name used for composed resource keys.
                           type: string
-                        ready:
-                          type: boolean
-                        ecrRepositoryPrefix:
+                          minLength: 1
+                          maxLength: 40
+                          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                        sourceRegistry:
+                          description: Source registry host used for default matching, such as ghcr.io.
                           type: string
-                        upstreamRegistryUrl:
+                          minLength: 1
+                        matchPrefix:
+                          description: Image reference prefix to rewrite. Defaults to sourceRegistry.
                           type: string
-                        pullPrefix:
+                        remoteUrl:
+                          description: Full upstream registry URL. Defaults to https://<sourceRegistry>.
                           type: string
-                        createdAt:
+                        ttl:
+                          description: Distribution proxy cache TTL.
                           type: string
-              mirror:
+                          default: 168h
+                        rootDirectory:
+                          description: Optional S3 root directory for this upstream. Defaults to /<rootPrefix>/<name>.
+                          type: string
+                        rewrite:
+                          description: Optional Crossplane ImageConfig rewrite for this upstream.
+                          type: object
+                          properties:
+                            enabled:
+                              description: Whether to render an ImageConfig rewriting matchPrefix to the proxy cache. Enable only when rewrite.prefix or gateway exposure is reachable by both Crossplane pods and node image pulls.
+                              type: boolean
+                              default: false
+                            prefix:
+                              description: Rewrite target prefix. Defaults to the generated Gateway hostname/path when gateway exposure is enabled. Otherwise this is required when rewrite.enabled is true.
+                              type: string
+                            imageConfigName:
+                              description: Optional ImageConfig name. Defaults to <xr-name>-distribution-<upstream-name>.
+                              type: string
+                        service:
+                          description: Kubernetes Service settings for the upstream proxy.
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum:
+                              - ClusterIP
+                              - NodePort
+                              - LoadBalancer
+                              default: ClusterIP
+                            port:
+                              type: integer
+                              minimum: 1
+                              maximum: 65535
+                              default: 5000
+                        gateway:
+                          description: Optional per-upstream Gateway API exposure overrides.
+                          type: object
+                          properties:
+                            enabled:
+                              description: Whether to render an HTTPRoute for this upstream. Defaults to distribution.gateway.enabled.
+                              type: boolean
+                            hostname:
+                              description: Hostname for this upstream route. Defaults to distribution.gateway.hostname.
+                              type: string
+                            pathPrefix:
+                              description: Path segment under the hostname used to select this upstream. Defaults to a normalized matchPrefix, such as xpkg-crossplane-io.
+                              type: string
+                        resources:
+                          description: Container resource requests and limits for this upstream.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - name
+                      - sourceRegistry
+            required:
+            - accountId
+            - region
+          status:
+            description: RegistryCacheStatus exposes proxy cache readiness and connection details.
+            type: object
+            properties:
+              ready:
+                type: boolean
+              distribution:
                 type: object
                 properties:
                   enabled:
@@ -543,19 +331,32 @@ spec:
                     type: boolean
                   namespace:
                     type: string
-                  schedule:
+                  bucketName:
                     type: string
-                  targetRegistry:
-                    type: string
-                  configuredRepositories:
-                    type: integer
-                  discoveryEnabled:
-                    type: boolean
-                  podIdentityEnabled:
-                    type: boolean
-                  lifecyclePolicyEnabled:
-                    type: boolean
-                  repositoryCreationTemplates:
-                    type: integer
+                  upstreams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        ready:
+                          type: boolean
+                        sourceRegistry:
+                          type: string
+                        matchPrefix:
+                          type: string
+                        remoteUrl:
+                          type: string
+                        serviceName:
+                          type: string
+                        httpRouteName:
+                          type: string
+                        gatewayHostname:
+                          type: string
+                        gatewayPathPrefix:
+                          type: string
+                        rewritePrefix:
+                          type: string
         required:
         - spec

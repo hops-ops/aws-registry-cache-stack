@@ -1,0 +1,36 @@
+apiVersion: aws.hops.ops.com.ai/v1alpha1
+kind: RegistryCache
+metadata:
+  name: platform-registry-cache
+  namespace: default
+spec:
+  accountId: "123456789012"
+  region: us-east-2
+  clusterName: platform-cluster
+  providerConfigRefs:
+    kubernetes:
+      name: platform-cluster
+      kind: ProviderConfig
+  distribution:
+    enabled: true
+    namespace: crossplane-system
+    storage:
+      bucketName: platform-registry-cache
+      rootPrefix: crossplane-packages
+    gateway:
+      enabled: true
+      hostname: rc.internal.example.com
+      gatewayRef:
+        name: platform
+        namespace: istio-ingress
+        sectionNames:
+          - https-apex
+    upstreams:
+      - name: xpkg-crossplane
+        sourceRegistry: xpkg.crossplane.io
+        rewrite:
+          enabled: true
+      - name: xpkg-upbound
+        sourceRegistry: xpkg.upbound.io
+        rewrite:
+          enabled: true

@@ -1,0 +1,78 @@
+# code: language=yaml
+#
+# Distribution proxy cache deployments.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.render }}
+{{- range $upstream := $cache.distribution.upstreams }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.deploymentResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-deployment-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ $upstream.resourceName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $upstream.labels | toJson }}
+      spec:
+        replicas: {{ $cache.distribution.replicas }}
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: {{ $upstream.resourceName }}
+            hops.ops.com.ai/distribution-upstream: {{ $upstream.name }}
+        template:
+          metadata:
+            annotations:
+              hops.ops.com.ai/distribution-config-hash: {{ printf "%s|%s|%s|%s|%s|%s" $cache.region $cache.distribution.storage.bucketName $upstream.rootDirectory $upstream.remoteUrl $upstream.ttl $cache.distribution.image | sha256sum | quote }}
+              {{- if $cache.distribution.renderPodIdentity }}
+              hops.ops.com.ai/pod-identity-association-id: {{ (($state.observed.distribution | default dict).podIdentity | default dict).associationId | default "pending" | quote }}
+              {{- end }}
+            labels:
+              app.kubernetes.io/name: {{ $upstream.resourceName }}
+              hops.ops.com.ai/distribution-upstream: {{ $upstream.name }}
+          spec:
+            serviceAccountName: {{ $cache.distribution.serviceAccount.name }}
+            containers:
+              - name: registry
+                image: {{ $cache.distribution.image | quote }}
+                imagePullPolicy: {{ $cache.distribution.imagePullPolicy }}
+                command:
+                  - registry
+                args:
+                  - serve
+                  - /etc/distribution/config.yml
+                env:
+                  - name: AWS_REGION
+                    value: {{ $cache.region | quote }}
+                  - name: AWS_DEFAULT_REGION
+                    value: {{ $cache.region | quote }}
+                ports:
+                  - name: registry
+                    containerPort: 5000
+                volumeMounts:
+                  - name: config
+                    mountPath: /etc/distribution
+                    readOnly: true
+                {{- with $upstream.resources }}
+                resources:
+                  {{ toYaml . | nindent 18 }}
+                {{- end }}
+            volumes:
+              - name: config
+                configMap:
+                  name: {{ $upstream.resourceName }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}

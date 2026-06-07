@@ -1,0 +1,67 @@
+# code: language=yaml
+#
+# Optional EKS PodIdentity for Distribution S3 access.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.renderPodIdentity }}
+---
+apiVersion: aws.hops.ops.com.ai/v1alpha1
+kind: PodIdentity
+metadata:
+  name: {{ $cache.distribution.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation "distribution-pod-identity" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  region: {{ $cache.region }}
+  {{- if $cache.clusterName }}
+  clusterName: {{ $cache.clusterName }}
+  {{- end }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.aws.name }}
+    kind: {{ $cache.providerConfigRefs.aws.kind }}
+  labels: {{ $cache.labels | toJson }}
+  tags: {{ $cache.tags | toJson }}
+  {{- if $cache.distribution.podIdentity.rolePrefix }}
+  rolePrefix: {{ $cache.distribution.podIdentity.rolePrefix }}
+  {{- end }}
+  {{- if $cache.distribution.podIdentity.roleNameOverride }}
+  roleNameOverride: {{ $cache.distribution.podIdentity.roleNameOverride }}
+  {{- end }}
+  {{- if $cache.distribution.podIdentity.permissionsBoundaryArn }}
+  permissionsBoundaryArn: {{ $cache.distribution.podIdentity.permissionsBoundaryArn }}
+  {{- end }}
+  serviceAccount:
+    name: {{ $cache.distribution.serviceAccount.name }}
+    namespace: {{ $cache.distribution.namespace }}
+  inlinePolicy:
+    - name: distribution-s3-cache
+      policy: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetBucketLocation",
+                "s3:ListBucket",
+                "s3:ListBucketMultipartUploads"
+              ],
+              "Resource": {{ $cache.distribution.bucketArn | quote }}
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts"
+              ],
+              "Resource": {{ $cache.distribution.objectArns | toJson }}
+            }
+          ]
+        }
+{{- end }}

@@ -1,17 +1,17 @@
 # code: language=yaml
 #
-# Optional namespace ownership for the mirror job.
+# Optional namespace for Distribution proxy caches.
 #
 
 {{- $cache := $state.registryCache }}
-{{- if and $cache.mirror.render $cache.mirror.createNamespace }}
+{{- if $cache.distribution.renderNamespace }}
 ---
 apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
 metadata:
-  name: {{ $cache.mirror.resourceName }}-namespace
+  name: {{ $cache.distribution.resourceName }}-namespace
   annotations:
-    {{ setResourceNameAnnotation "mirror-namespace" }}
+    {{ setResourceNameAnnotation "distribution-namespace" }}
   labels: {{ $cache.labels | toJson }}
 spec:
   managementPolicies: {{ $cache.managementPolicies | toJson }}
@@ -20,7 +20,7 @@ spec:
       apiVersion: v1
       kind: Namespace
       metadata:
-        name: {{ $cache.mirror.namespace }}
+        name: {{ $cache.distribution.namespace }}
         labels: {{ $cache.labels | toJson }}
   providerConfigRef:
     name: {{ $cache.providerConfigRefs.kubernetes.name }}

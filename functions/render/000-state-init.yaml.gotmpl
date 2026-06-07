@@ -15,14 +15,13 @@
 {{- $region := $spec.region | default "" }}
 {{- $clusterName := $spec.clusterName | default "" }}
 {{- $managementPolicies := $spec.managementPolicies | default (list "*") }}
-{{- $registryHost := printf "%s.dkr.ecr.%s.amazonaws.com" $accountId $region }}
 
 {{- $defaults := dict
   "hops.ops.com.ai/managed" "true"
   (printf "hops.ops.com.ai/%s" (lower $xr.kind)) $name
 }}
-{{- $labels := merge (dict) $defaults ($spec.labels | default dict) }}
-{{- $tags := merge (dict) $defaults ($spec.tags | default dict) }}
+{{- $labels := mergeOverwrite (dict) $defaults ($spec.labels | default dict) }}
+{{- $tags := mergeOverwrite (dict) $defaults ($spec.tags | default dict) }}
 
 # ==============================================================================
 # Provider config refs
@@ -41,103 +40,77 @@
 }}
 
 # ==============================================================================
-# Pull-through defaults
+# Distribution proxy cache defaults
 # ==============================================================================
-{{- $pullThroughSpec := $spec.pullThrough | default dict }}
-{{- $pullThroughEnabled := false }}
-{{- if hasKey $pullThroughSpec "enabled" }}
-  {{- $pullThroughEnabled = $pullThroughSpec.enabled }}
+{{- $distributionSpec := $spec.distribution | default dict }}
+{{- $distributionEnabled := false }}
+{{- if hasKey $distributionSpec "enabled" }}
+  {{- $distributionEnabled = $distributionSpec.enabled }}
 {{- end }}
 
-# ==============================================================================
-# Mirror defaults
-# ==============================================================================
-{{- $mirrorSpec := $spec.mirror | default dict }}
-{{- $mirrorEnabled := false }}
-{{- if hasKey $mirrorSpec "enabled" }}
-  {{- $mirrorEnabled = $mirrorSpec.enabled }}
+{{- $distributionNamespace := $distributionSpec.namespace | default "crossplane-system" }}
+{{- $distributionCreateNamespace := $distributionSpec.createNamespace | default false }}
+{{- $distributionImagePullPolicy := $distributionSpec.imagePullPolicy | default "IfNotPresent" }}
+{{- $distributionReplicas := $distributionSpec.replicas | default 1 }}
+
+{{- $distributionServiceAccountSpec := $distributionSpec.serviceAccount | default dict }}
+{{- $distributionServiceAccountName := $distributionServiceAccountSpec.name | default (printf "%s-distribution" $name) }}
+{{- $distributionServiceAccountLabels := mergeOverwrite (dict) $labels ($distributionServiceAccountSpec.labels | default dict) }}
+
+{{- $distributionPodIdentitySpec := $distributionSpec.podIdentity | default dict }}
+{{- $distributionPodIdentityEnabled := true }}
+{{- if hasKey $distributionPodIdentitySpec "enabled" }}
+  {{- $distributionPodIdentityEnabled = $distributionPodIdentitySpec.enabled }}
 {{- end }}
 
-{{- $targetSpec := $mirrorSpec.target | default dict }}
-{{- $defaultTargetPrefixes := dict
-  "xpkg.crossplane.io" "xpkg-crossplane"
-  "xpkg.upbound.io" "xpkg-upbound"
+{{- $distributionStorageSpec := $distributionSpec.storage | default dict }}
+{{- $defaultDistributionBucket := regexReplaceAll "[^a-z0-9-]+" (lower (printf "hops-%s-%s-%s-registry-cache" $accountId $region $name)) "-" }}
+{{- $defaultDistributionBucket = trimAll "-" (trunc 63 $defaultDistributionBucket) }}
+{{- $distributionBucketName := $distributionStorageSpec.bucketName | default $defaultDistributionBucket }}
+{{- $distributionCreateBucket := true }}
+{{- if hasKey $distributionStorageSpec "createBucket" }}
+  {{- $distributionCreateBucket = $distributionStorageSpec.createBucket }}
+{{- end }}
+{{- $distributionRootPrefix := trimAll "/" ($distributionStorageSpec.rootPrefix | default "distribution") }}
+{{- $distributionStorageEncrypt := true }}
+{{- if hasKey $distributionStorageSpec "encrypt" }}
+  {{- $distributionStorageEncrypt = $distributionStorageSpec.encrypt }}
+{{- end }}
+{{- $distributionStorageSecure := true }}
+{{- if hasKey $distributionStorageSpec "secure" }}
+  {{- $distributionStorageSecure = $distributionStorageSpec.secure }}
+{{- end }}
+{{- $distributionStorageV4Auth := true }}
+{{- if hasKey $distributionStorageSpec "v4Auth" }}
+  {{- $distributionStorageV4Auth = $distributionStorageSpec.v4Auth }}
+{{- end }}
+{{- $distributionStorageForcePathStyle := false }}
+{{- if hasKey $distributionStorageSpec "forcePathStyle" }}
+  {{- $distributionStorageForcePathStyle = $distributionStorageSpec.forcePathStyle }}
+{{- end }}
+
+{{- $distributionLifecycleSpec := $distributionStorageSpec.lifecycle | default dict }}
+{{- $distributionLifecycleEnabled := true }}
+{{- if hasKey $distributionLifecycleSpec "enabled" }}
+  {{- $distributionLifecycleEnabled = $distributionLifecycleSpec.enabled }}
+{{- end }}
+{{- $distributionAbortMultipartDays := 7 }}
+{{- if hasKey $distributionLifecycleSpec "abortIncompleteMultipartUploadDays" }}
+  {{- $distributionAbortMultipartDays = $distributionLifecycleSpec.abortIncompleteMultipartUploadDays }}
+{{- end }}
+
+{{- $distributionGatewaySpec := $distributionSpec.gateway | default dict }}
+{{- $distributionGatewayEnabled := false }}
+{{- if hasKey $distributionGatewaySpec "enabled" }}
+  {{- $distributionGatewayEnabled = $distributionGatewaySpec.enabled }}
+{{- end }}
+{{- $distributionGatewayRefSpec := $distributionGatewaySpec.gatewayRef | default dict }}
+{{- $distributionGatewayRefSectionNames := $distributionGatewayRefSpec.sectionNames | default (list "https-apex") }}
+{{- $distributionGatewayRef := dict
+  "name" ($distributionGatewayRefSpec.name | default "platform")
+  "namespace" ($distributionGatewayRefSpec.namespace | default "istio-ingress")
+  "sectionNames" $distributionGatewayRefSectionNames
 }}
-{{- $targetPrefixes := merge (dict) $defaultTargetPrefixes ($targetSpec.prefixes | default dict) }}
-
-{{- $discoverySpec := $mirrorSpec.discovery | default dict }}
-{{- $crossplanePackagesSpec := $discoverySpec.crossplanePackages | default dict }}
-{{- $crossplanePackagesEnabled := true }}
-{{- if hasKey $crossplanePackagesSpec "enabled" }}
-  {{- $crossplanePackagesEnabled = $crossplanePackagesSpec.enabled }}
-{{- end }}
-
-{{- $podIdentitySpec := $mirrorSpec.podIdentity | default dict }}
-{{- $podIdentityEnabled := true }}
-{{- if hasKey $podIdentitySpec "enabled" }}
-  {{- $podIdentityEnabled = $podIdentitySpec.enabled }}
-{{- end }}
-
-{{- $regsyncSpec := $mirrorSpec.regsync | default dict }}
-{{- $regsyncMissingOnly := true }}
-{{- if hasKey $regsyncSpec "missingOnly" }}
-  {{- $regsyncMissingOnly = $regsyncSpec.missingOnly }}
-{{- end }}
-
-{{- $lifecyclePolicySpec := $mirrorSpec.lifecyclePolicy | default dict }}
-{{- $lifecyclePolicyEnabled := false }}
-{{- if hasKey $lifecyclePolicySpec "enabled" }}
-  {{- $lifecyclePolicyEnabled = $lifecyclePolicySpec.enabled }}
-{{- end }}
-{{- $untaggedExpireAfterDays := 1 }}
-{{- if hasKey $lifecyclePolicySpec "untaggedExpireAfterDays" }}
-  {{- $untaggedExpireAfterDays = $lifecyclePolicySpec.untaggedExpireAfterDays }}
-{{- end }}
-{{- $lifecyclePolicyText := $lifecyclePolicySpec.policy | default "" }}
-{{- if and $lifecyclePolicyEnabled (eq $lifecyclePolicyText "") }}
-  {{- $lifecyclePolicyText = (dict
-    "rules" (list (dict
-      "rulePriority" 1
-      "description" (printf "Expire untagged images after %d day(s)" $untaggedExpireAfterDays)
-      "selection" (dict
-        "tagStatus" "untagged"
-        "countType" "sinceImagePushed"
-        "countUnit" "days"
-        "countNumber" $untaggedExpireAfterDays
-      )
-      "action" (dict
-        "type" "expire"
-      )
-    ))
-  ) | toJson }}
-{{- end }}
-
-{{- $startingDeadlineSeconds := "" }}
-{{- $hasStartingDeadlineSeconds := false }}
-{{- if hasKey $mirrorSpec "startingDeadlineSeconds" }}
-  {{- $startingDeadlineSeconds = $mirrorSpec.startingDeadlineSeconds }}
-  {{- $hasStartingDeadlineSeconds = true }}
-{{- end }}
-{{- $successfulJobsHistoryLimit := 1 }}
-{{- if hasKey $mirrorSpec "successfulJobsHistoryLimit" }}
-  {{- $successfulJobsHistoryLimit = $mirrorSpec.successfulJobsHistoryLimit }}
-{{- end }}
-{{- $failedJobsHistoryLimit := 3 }}
-{{- if hasKey $mirrorSpec "failedJobsHistoryLimit" }}
-  {{- $failedJobsHistoryLimit = $mirrorSpec.failedJobsHistoryLimit }}
-{{- end }}
-{{- $backoffLimit := 1 }}
-{{- if hasKey $mirrorSpec "backoffLimit" }}
-  {{- $backoffLimit = $mirrorSpec.backoffLimit }}
-{{- end }}
-{{- $activeDeadlineSeconds := 7200 }}
-{{- if hasKey $mirrorSpec "activeDeadlineSeconds" }}
-  {{- $activeDeadlineSeconds = $mirrorSpec.activeDeadlineSeconds }}
-{{- end }}
-
-{{- $serviceAccountSpec := $mirrorSpec.serviceAccount | default dict }}
-{{- $serviceAccountName := $serviceAccountSpec.name | default (printf "%s-mirror" $name) }}
-{{- $serviceAccountLabels := merge (dict) $labels ($serviceAccountSpec.labels | default dict) }}
 
 # ==============================================================================
 # Initialize $state namespace
@@ -150,7 +123,6 @@
       "accountId" $accountId
       "region" $region
       "clusterName" $clusterName
-      "registryHost" $registryHost
       "managementPolicies" $managementPolicies
       "providerConfigRefs" (dict
         "aws" $awsProviderConfigRef
@@ -158,72 +130,45 @@
       )
       "labels" $labels
       "tags" $tags
-      "pullThrough" (dict
-        "enabled" $pullThroughEnabled
-        "rules" ($pullThroughSpec.rules | default list)
-        "enhancedScanning" ($pullThroughSpec.enhancedScanning | default dict)
-      )
-      "mirror" (dict
-        "enabled" $mirrorEnabled
-        "namespace" ($mirrorSpec.namespace | default "crossplane-system")
-        "createNamespace" ($mirrorSpec.createNamespace | default false)
-        "schedule" ($mirrorSpec.schedule | default "0 */6 * * *")
-        "suspend" ($mirrorSpec.suspend | default false)
-        "tool" ($mirrorSpec.tool | default "regsync")
-        "image" ($mirrorSpec.image | default "ghcr.io/hops-ops/registry-cache-mirror:latest")
-        "imagePullPolicy" ($mirrorSpec.imagePullPolicy | default "IfNotPresent")
-        "imagePullSecrets" ($mirrorSpec.imagePullSecrets | default list)
+      "distribution" (dict
+        "enabled" $distributionEnabled
+        "namespace" $distributionNamespace
+        "createNamespace" $distributionCreateNamespace
+        "image" ($distributionSpec.image | default "registry:3")
+        "imagePullPolicy" $distributionImagePullPolicy
+        "replicas" $distributionReplicas
         "serviceAccount" (dict
-          "name" $serviceAccountName
-          "labels" $serviceAccountLabels
-          "annotations" ($serviceAccountSpec.annotations | default dict)
-        )
-        "target" (dict
-          "registry" ($targetSpec.registry | default $registryHost)
-          "prefixes" $targetPrefixes
-        )
-        "discovery" (dict
-          "crossplanePackages" (dict
-            "enabled" $crossplanePackagesEnabled
-            "mode" ($crossplanePackagesSpec.mode | default "repository")
-            "registries" ($crossplanePackagesSpec.registries | default (list "xpkg.crossplane.io" "xpkg.upbound.io"))
-            "namespaces" ($crossplanePackagesSpec.namespaces | default list)
-          )
-        )
-        "repositories" ($mirrorSpec.repositories | default list)
-        "tags" ($mirrorSpec.tags | default (dict "mode" "filtered" "allow" (list "^v.*")))
-        "lifecyclePolicy" (dict
-          "enabled" $lifecyclePolicyEnabled
-          "untaggedExpireAfterDays" $untaggedExpireAfterDays
-          "policy" $lifecyclePolicyText
-        )
-        "regsync" (dict
-          "missingOnly" $regsyncMissingOnly
-          "interval" ($regsyncSpec.interval | default "6h")
-          "parallel" ($regsyncSpec.parallel | default 2)
-          "logLevel" ($regsyncSpec.logLevel | default "INFO")
+          "name" $distributionServiceAccountName
+          "labels" $distributionServiceAccountLabels
+          "annotations" ($distributionServiceAccountSpec.annotations | default dict)
         )
         "podIdentity" (dict
-          "enabled" $podIdentityEnabled
-          "rolePrefix" ($podIdentitySpec.rolePrefix | default "")
-          "roleNameOverride" ($podIdentitySpec.roleNameOverride | default "")
-          "permissionsBoundaryArn" ($podIdentitySpec.permissionsBoundaryArn | default "")
+          "enabled" $distributionPodIdentityEnabled
+          "rolePrefix" ($distributionPodIdentitySpec.rolePrefix | default "")
+          "roleNameOverride" ($distributionPodIdentitySpec.roleNameOverride | default "")
+          "permissionsBoundaryArn" ($distributionPodIdentitySpec.permissionsBoundaryArn | default "")
         )
-        "env" ($mirrorSpec.env | default list)
-        "envFrom" ($mirrorSpec.envFrom | default list)
-        "resources" ($mirrorSpec.resources | default dict)
-        "podSecurityContext" ($mirrorSpec.podSecurityContext | default dict)
-        "securityContext" ($mirrorSpec.securityContext | default dict)
-        "nodeSelector" ($mirrorSpec.nodeSelector | default dict)
-        "tolerations" ($mirrorSpec.tolerations | default list)
-        "affinity" ($mirrorSpec.affinity | default dict)
-        "concurrencyPolicy" ($mirrorSpec.concurrencyPolicy | default "Forbid")
-        "startingDeadlineSeconds" $startingDeadlineSeconds
-        "hasStartingDeadlineSeconds" $hasStartingDeadlineSeconds
-        "successfulJobsHistoryLimit" $successfulJobsHistoryLimit
-        "failedJobsHistoryLimit" $failedJobsHistoryLimit
-        "backoffLimit" $backoffLimit
-        "activeDeadlineSeconds" $activeDeadlineSeconds
+        "storage" (dict
+          "bucketName" $distributionBucketName
+          "createBucket" $distributionCreateBucket
+          "rootPrefix" $distributionRootPrefix
+          "encrypt" $distributionStorageEncrypt
+          "secure" $distributionStorageSecure
+          "v4Auth" $distributionStorageV4Auth
+          "regionEndpoint" ($distributionStorageSpec.regionEndpoint | default "")
+          "forcePathStyle" $distributionStorageForcePathStyle
+          "lifecycle" (dict
+            "enabled" $distributionLifecycleEnabled
+            "abortIncompleteMultipartUploadDays" $distributionAbortMultipartDays
+          )
+        )
+        "gateway" (dict
+          "enabled" $distributionGatewayEnabled
+          "hostname" ($distributionGatewaySpec.hostname | default "")
+          "port" ($distributionGatewaySpec.port | default 443)
+          "gatewayRef" $distributionGatewayRef
+        )
+        "upstreams" ($distributionSpec.upstreams | default list)
       )
     )
   )

@@ -1,0 +1,74 @@
+# code: language=yaml
+#
+# Distribution configuration per upstream proxy cache.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.render }}
+{{- range $upstream := $cache.distribution.upstreams }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.configResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-config-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: {{ $upstream.resourceName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $upstream.labels | toJson }}
+      data:
+        config.yml: |
+          version: 0.1
+          log:
+            level: info
+          storage:
+            s3:
+              region: {{ $cache.region }}
+              bucket: {{ $cache.distribution.storage.bucketName }}
+              rootdirectory: {{ $upstream.rootDirectory | quote }}
+              encrypt: {{ $cache.distribution.storage.encrypt }}
+              secure: {{ $cache.distribution.storage.secure }}
+              v4auth: {{ $cache.distribution.storage.v4Auth }}
+              {{- if $cache.distribution.storage.regionEndpoint }}
+              regionendpoint: {{ $cache.distribution.storage.regionEndpoint | quote }}
+              {{- end }}
+              {{- if $cache.distribution.storage.forcePathStyle }}
+              forcepathstyle: true
+              {{- end }}
+            delete:
+              enabled: true
+            cache:
+              blobdescriptor: inmemory
+            maintenance:
+              uploadpurging:
+                enabled: true
+                age: 168h
+                interval: 24h
+                dryrun: false
+          http:
+            addr: :5000
+            secret: {{ printf "%s-%s" $cache.name $upstream.name | quote }}
+            headers:
+              X-Content-Type-Options:
+                - nosniff
+          health:
+            storagedriver:
+              enabled: true
+              interval: 10s
+              threshold: 3
+          proxy:
+            remoteurl: {{ $upstream.remoteUrl | quote }}
+            ttl: {{ $upstream.ttl | quote }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}

@@ -18,48 +18,31 @@ spec:
     kubernetes:
       name: platform-cluster
       kind: ProviderConfig
-  pullThrough:
-    enabled: true
-    rules:
-      - name: ecr-public
-        ecrRepositoryPrefix: ecr-public
-        upstreamRegistryUrl: public.ecr.aws
-        repositoryCreationTemplate:
-          enabled: true
-      - name: kubernetes
-        ecrRepositoryPrefix: kubernetes
-        upstreamRegistryUrl: registry.k8s.io
-        repositoryCreationTemplate:
-          enabled: true
-      - name: quay
-        ecrRepositoryPrefix: quay
-        upstreamRegistryUrl: quay.io
-        repositoryCreationTemplate:
-          enabled: true
-  mirror:
+  distribution:
     enabled: true
     namespace: crossplane-system
-    schedule: "0 */6 * * *"
-    target:
-      prefixes:
-        xpkg.crossplane.io: xpkg-crossplane
-        xpkg.upbound.io: xpkg-upbound
-    discovery:
-      crossplanePackages:
-        enabled: true
-        registries:
-          - xpkg.crossplane.io
-          - xpkg.upbound.io
-    repositories:
-      - source: xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr
-      - source: xpkg.crossplane.io/crossplane-contrib/function-auto-ready
-      - source: xpkg.upbound.io/wildbitca/provider-cloudflare-dns
-    tags:
-      mode: filtered
-      allow:
-        - "^v.*"
-    lifecyclePolicy:
-      enabled: true
-      untaggedExpireAfterDays: 1
+    image: registry:3
+    storage:
+      bucketName: platform-registry-cache
+      rootPrefix: distribution
+      lifecycle:
+        abortIncompleteMultipartUploadDays: 7
     podIdentity:
       rolePrefix: platform-
+    upstreams:
+      - name: docker-hub
+        sourceRegistry: registry-1.docker.io
+        matchPrefix: docker.io
+        remoteUrl: https://registry-1.docker.io
+      - name: ghcr
+        sourceRegistry: ghcr.io
+      - name: quay
+        sourceRegistry: quay.io
+      - name: ecr-public
+        sourceRegistry: public.ecr.aws
+      - name: kubernetes
+        sourceRegistry: registry.k8s.io
+      - name: xpkg-crossplane
+        sourceRegistry: xpkg.crossplane.io
+      - name: xpkg-upbound
+        sourceRegistry: xpkg.upbound.io
