@@ -122,6 +122,22 @@ spec:
             } >> "$regsync_config"
           }
 
+          repo_source() {
+            repo="$1"
+            if printf '%s' "$repo" | jq -e 'type == "object"' >/dev/null 2>&1; then
+              printf '%s' "$repo" | jq -r '.source // empty'
+            else
+              printf '%s\n' "$repo"
+            fi
+          }
+
+          repo_tag_policy() {
+            repo="$1"
+            if printf '%s' "$repo" | jq -e 'type == "object"' >/dev/null 2>&1; then
+              printf '%s' "$repo" | jq -c '.tags // empty'
+            fi
+          }
+
           need jq
           need kubectl
           need aws
@@ -194,7 +210,9 @@ spec:
           mirrored_count=0
           skipped_count=0
           while IFS= read -r repo; do
-            source="$(printf '%s' "$repo" | jq -r '.source')"
+            [ -n "$repo" ] || continue
+            source="$(repo_source "$repo")"
+            [ -n "$source" ] || continue
             registry="${source%%/*}"
             source_path="${source#*/}"
             prefix="$(jq -r --arg registry "$registry" '.target.prefixes[$registry] // empty' "$config")"
@@ -216,7 +234,10 @@ spec:
               echo "    interval: $interval"
             } >> "$regsync_config"
 
-            tag_policy="$(jq -c --argjson repo "$repo" '($repo.tags // .tags // {"mode":"all"})' "$config")"
+            tag_policy="$(repo_tag_policy "$repo")"
+            if [ -z "$tag_policy" ]; then
+              tag_policy="$(jq -c '.tags // {"mode":"all"}' "$config")"
+            fi
             append_tag_policy "$tag_policy"
             mirrored_count=$((mirrored_count + 1))
           done < "$repo_items"
