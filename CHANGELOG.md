@@ -1,8 +1,6 @@
-# Changelog
+### What's changed in v1.0.0
 
-## v0.1.0
+* feat: consolidate registry cache API (by @patrickleet)
 
-- Initial release of the AWS registry cache stack.
-- Combines ECR pull-through cache rules with a scheduled Kubernetes mirror job
-  for unsupported OCI registries.
-- Adds Crossplane package discovery and optional PodIdentity for ECR writes.
+
+See full diff: [v0.1.1...v1.0.0](https://github.com/hops-ops/aws-registry-cache-stack/compare/v0.1.1...v1.0.0)
