@@ -1,14 +1,15 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: awsregistrycachestacks.aws.hops.ops.com.ai
+  name: registrycaches.aws.hops.ops.com.ai
 spec:
   group: aws.hops.ops.com.ai
   names:
     categories:
       - crossplane
-    kind: AWSRegistryCacheStack
-    plural: awsregistrycachestacks
+    kind: RegistryCache
+    singular: registrycache
+    plural: registrycaches
   scope: Namespaced
   defaultCompositeDeletePolicy: Foreground
   versions:
@@ -17,11 +18,11 @@ spec:
     served: true
     schema:
       openAPIV3Schema:
-        description: AWSRegistryCacheStack combines ECR pull-through cache rules with scheduled OCI repository mirroring into ECR.
+        description: RegistryCache combines ECR pull-through cache rules with scheduled OCI repository mirroring into ECR.
         type: object
         properties:
           spec:
-            description: AWSRegistryCacheStackSpec defines the registry cache and mirror behavior for one AWS account and region.
+            description: RegistryCacheSpec defines the registry cache and mirror behavior for one AWS account and region.
             type: object
             properties:
               accountId:
@@ -92,11 +93,11 @@ spec:
                 type: object
                 properties:
                   enabled:
-                    description: Whether to compose an ECRRegistryCache claim for pull-through cache rules.
+                    description: Whether to compose direct ECR pull-through cache resources.
                     type: boolean
                     default: false
                   enhancedScanning:
-                    description: Optional registry-wide ECR enhanced scanning configuration passed to ECRRegistryCache.
+                    description: Optional registry-wide ECR enhanced scanning configuration.
                     type: object
                     properties:
                       enabled:
@@ -123,7 +124,7 @@ spec:
                           required:
                           - filter
                   rules:
-                    description: Pull-through cache rules passed to ECRRegistryCache.
+                    description: Pull-through cache rules.
                     type: array
                     items:
                       type: object
@@ -348,15 +349,19 @@ spec:
                       required:
                       - source
                   tags:
-                    description: Global tag policy used when a repository omits a repository-specific policy.
+                    description: Global tag policy used when a repository omits a repository-specific policy. Defaults to release-style tags that start with v.
                     type: object
+                    default:
+                      mode: filtered
+                      allow:
+                      - "^v.*"
                     properties:
                       mode:
                         type: string
                         enum:
                         - all
                         - filtered
-                        default: all
+                        default: filtered
                       allow:
                         type: array
                         items:
@@ -369,6 +374,22 @@ spec:
                         type: array
                         items:
                           type: string
+                  lifecyclePolicy:
+                    description: ECR lifecycle policy applied to repositories created by the mirror target prefixes.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether to render ECR RepositoryCreationTemplate resources for mirror target prefixes.
+                        type: boolean
+                        default: false
+                      untaggedExpireAfterDays:
+                        description: Number of days to retain untagged images when policy is generated.
+                        type: integer
+                        minimum: 1
+                        default: 1
+                      policy:
+                        description: Optional raw ECR lifecycle policy JSON. Defaults to expiring untagged images after untaggedExpireAfterDays.
+                        type: string
                   regsync:
                     description: regsync execution options used by the wrapper.
                     type: object
@@ -470,7 +491,7 @@ spec:
             - accountId
             - region
           status:
-            description: AWSRegistryCacheStackStatus exposes configured registry cache outputs and composed readiness.
+            description: RegistryCacheStatus exposes configured registry cache outputs and composed readiness.
             type: object
             properties:
               ready:
@@ -478,6 +499,8 @@ spec:
               registry:
                 type: object
                 properties:
+                  id:
+                    type: string
                   host:
                     type: string
               pullThrough:
@@ -487,6 +510,13 @@ spec:
                     type: boolean
                   ready:
                     type: boolean
+                  scanning:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      scanType:
+                        type: string
                   rules:
                     type: array
                     items:
@@ -494,7 +524,15 @@ spec:
                       properties:
                         name:
                           type: string
+                        ready:
+                          type: boolean
+                        ecrRepositoryPrefix:
+                          type: string
+                        upstreamRegistryUrl:
+                          type: string
                         pullPrefix:
+                          type: string
+                        createdAt:
                           type: string
               mirror:
                 type: object
@@ -515,5 +553,9 @@ spec:
                     type: boolean
                   podIdentityEnabled:
                     type: boolean
+                  lifecyclePolicyEnabled:
+                    type: boolean
+                  repositoryCreationTemplates:
+                    type: integer
         required:
         - spec

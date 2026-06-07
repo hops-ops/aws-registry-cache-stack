@@ -1,0 +1,28 @@
+# code: language=yaml
+#
+# ECR repository creation templates for mirror-created repositories.
+#
+
+{{- $cache := $state.registryCache }}
+{{- range $template := $cache.mirror.repositoryCreationTemplates }}
+---
+apiVersion: ecr.aws.m.upbound.io/v1beta1
+kind: RepositoryCreationTemplate
+metadata:
+  name: {{ $template.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation $template.resourceKey }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    region: {{ $cache.region }}
+    prefix: {{ $template.prefix }}
+    appliedFor:
+      - CREATE_ON_PUSH
+    description: {{ printf "Mirror repositories for %s" $template.sourceRegistry | quote }}
+    lifecyclePolicy: {{ $template.lifecyclePolicy | quote }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.aws.name }}
+    kind: {{ $cache.providerConfigRefs.aws.kind }}
+{{- end }}

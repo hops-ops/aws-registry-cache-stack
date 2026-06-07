@@ -12,10 +12,39 @@
 {{- $renderPodIdentity := and $renderMirror $mirror.podIdentity.enabled }}
 
 {{- $pullThroughRules := list }}
+{{- $pullThroughResourceRules := list }}
 {{- range $rule := $pullThrough.rules }}
-  {{- $pullThroughRules = append $pullThroughRules (dict
+  {{- $templateSpec := $rule.repositoryCreationTemplate | default dict }}
+  {{- $templateEnabled := false }}
+  {{- if hasKey $templateSpec "enabled" }}
+    {{- $templateEnabled = $templateSpec.enabled }}
+  {{- end }}
+  {{- $ruleState := dict
     "name" $rule.name
+    "resourceName" (printf "%s-%s" $eff.name $rule.name)
+    "ecrRepositoryPrefix" $rule.ecrRepositoryPrefix
+    "upstreamRegistryUrl" $rule.upstreamRegistryUrl
+    "credentialArn" ($rule.credentialArn | default "")
+    "customRoleArn" ($rule.customRoleArn | default "")
+    "upstreamRepositoryPrefix" ($rule.upstreamRepositoryPrefix | default "")
+    "forProvider" ($rule.forProvider | default dict)
     "pullPrefix" (printf "%s/%s" $eff.registryHost $rule.ecrRepositoryPrefix)
+    "repositoryCreationTemplate" (dict
+      "enabled" $templateEnabled
+      "description" ($templateSpec.description | default "")
+      "customRoleArn" ($templateSpec.customRoleArn | default "")
+      "encryptionConfiguration" ($templateSpec.encryptionConfiguration | default list)
+      "imageTagMutability" ($templateSpec.imageTagMutability | default "")
+      "imageTagMutabilityExclusionFilter" ($templateSpec.imageTagMutabilityExclusionFilter | default list)
+      "lifecyclePolicy" ($templateSpec.lifecyclePolicy | default "")
+      "repositoryPolicy" ($templateSpec.repositoryPolicy | default "")
+      "resourceTags" ($templateSpec.resourceTags | default dict)
+    )
+  }}
+  {{- $pullThroughResourceRules = append $pullThroughResourceRules $ruleState }}
+  {{- $pullThroughRules = append $pullThroughRules (dict
+    "name" $ruleState.name
+    "pullPrefix" $ruleState.pullPrefix
   ) }}
 {{- end }}
 
@@ -36,6 +65,43 @@
   "tags" $mirror.tags
   "regsync" $mirror.regsync
 }}
+{{- if $mirror.lifecyclePolicy.enabled }}
+  {{- $mirrorConfig = set $mirrorConfig "repositoryCreation" (dict
+    "createRepositories" false
+    "mode" "create-on-push"
+  ) }}
+{{- end }}
+
+{{- $mirrorRepositoryCreationTemplates := list }}
+{{- if and $renderMirror $mirror.lifecyclePolicy.enabled }}
+  {{- range $sourceRegistry, $prefix := $mirror.target.prefixes }}
+    {{- if $prefix }}
+      {{- $prefixName := regexReplaceAll "[^a-z0-9-]+" (lower $prefix) "-" }}
+      {{- $prefixName = trimAll "-" $prefixName }}
+      {{- $prefixName = trunc 40 $prefixName }}
+      {{- $resourceName := printf "%s-mirror-%s" $eff.name $prefixName }}
+      {{- $mirrorRepositoryCreationTemplates = append $mirrorRepositoryCreationTemplates (dict
+        "resourceName" $resourceName
+        "resourceKey" (printf "mirror-template-%s" $prefixName)
+        "sourceRegistry" $sourceRegistry
+        "prefix" $prefix
+        "lifecyclePolicy" $mirror.lifecyclePolicy.policy
+      ) }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+# Default scan filters target only the pull-through prefixes owned by this XR.
+{{- $repositoryFilters := $pullThrough.enhancedScanning.repositoryFilters | default list }}
+{{- if eq (len $repositoryFilters) 0 }}
+  {{- $repositoryFilters = list }}
+  {{- range $rule := $pullThroughResourceRules }}
+    {{- $repositoryFilters = append $repositoryFilters (dict
+      "filter" (printf "%s/*" $rule.ecrRepositoryPrefix)
+      "filterType" "WILDCARD"
+    ) }}
+  {{- end }}
+{{- end }}
 
 {{- $state = set $state "registryCache" (dict
   "name" $eff.name
@@ -50,9 +116,13 @@
   "pullThrough" (dict
     "enabled" $pullThrough.enabled
     "render" $renderPullThrough
-    "rules" $pullThrough.rules
+    "rules" $pullThroughResourceRules
     "statusRules" $pullThroughRules
-    "enhancedScanning" $pullThrough.enhancedScanning
+    "enhancedScanning" (dict
+      "enabled" ($pullThrough.enhancedScanning.enabled | default false)
+      "scanFrequency" ($pullThrough.enhancedScanning.scanFrequency | default "CONTINUOUS_SCAN")
+      "repositoryFilters" $repositoryFilters
+    )
   )
   "mirror" (merge (dict) $mirror (dict
     "render" $renderMirror
@@ -60,5 +130,6 @@
     "resourceName" (printf "%s-mirror" $eff.name)
     "config" $mirrorConfig
     "ecrRepositoryArns" $ecrRepositoryArns
+    "repositoryCreationTemplates" $mirrorRepositoryCreationTemplates
   ))
 ) }}

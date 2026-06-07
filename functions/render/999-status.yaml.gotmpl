@@ -11,10 +11,14 @@ kind: {{ $xr.kind }}
 status:
   ready: {{ $s.ready }}
   registry:
+    id: {{ $s.registry.id | quote }}
     host: {{ $s.registry.host }}
   pullThrough:
     enabled: {{ $s.pullThrough.enabled }}
     ready: {{ $s.pullThrough.ready }}
+    scanning:
+      enabled: {{ $s.pullThrough.scanning.enabled }}
+      scanType: {{ $s.pullThrough.scanning.scanType | quote }}
     rules:
       {{- toYaml $s.pullThrough.rules | nindent 6 }}
   mirror:
@@ -26,3 +30,5 @@ status:
     configuredRepositories: {{ $s.mirror.configuredRepositories }}
     discoveryEnabled: {{ $s.mirror.discoveryEnabled }}
     podIdentityEnabled: {{ $s.mirror.podIdentityEnabled }}
+    lifecyclePolicyEnabled: {{ $s.mirror.lifecyclePolicyEnabled }}
+    repositoryCreationTemplates: {{ $s.mirror.repositoryCreationTemplates }}

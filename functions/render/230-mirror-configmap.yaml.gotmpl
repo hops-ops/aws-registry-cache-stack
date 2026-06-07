@@ -155,6 +155,7 @@ spec:
           parallel="$(jq -r '.regsync.parallel // 2' "$config")"
           log_level="$(jq -r '.regsync.logLevel // "INFO"' "$config")"
           missing_only="$(jq -r '.regsync.missingOnly // true' "$config")"
+          create_repositories="$(jq -r '.repositoryCreation.createRepositories // true' "$config")"
 
           : > "$repos_jsonl"
 
@@ -225,7 +226,9 @@ spec:
 
             target_repo="$prefix/$source_path"
             target="$target_registry/$target_repo"
-            create_ecr_repository "$target_repo"
+            if [ "$create_repositories" = "true" ]; then
+              create_ecr_repository "$target_repo"
+            fi
 
             {
               echo "  - type: repository"
@@ -236,7 +239,7 @@ spec:
 
             tag_policy="$(repo_tag_policy "$repo")"
             if [ -z "$tag_policy" ]; then
-              tag_policy="$(jq -c '.tags // {"mode":"all"}' "$config")"
+              tag_policy="$(jq -c '.tags // {"mode":"filtered","allow":["^v.*"]}' "$config")"
             fi
             append_tag_policy "$tag_policy"
             mirrored_count=$((mirrored_count + 1))

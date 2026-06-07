@@ -37,7 +37,7 @@ spec:
     name: {{ $cache.mirror.serviceAccount.name }}
     namespace: {{ $cache.mirror.namespace }}
   inlinePolicy:
-    - name: ecr-registry-cache-mirror
+    - name: registry-cache-mirror
       policy: |
         {
           "Version": "2012-10-17",

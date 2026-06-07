@@ -1,20 +1,20 @@
 SHELL := /bin/bash
 
 PACKAGE ?= aws-registry-cache-stack
-XRD_DIR := apis/awsregistrycachestacks
+XRD_DIR := apis/registrycaches
 COMPOSITION := $(XRD_DIR)/composition.yaml
 DEFINITION := $(XRD_DIR)/definition.yaml
 CONFIGURATION := $(XRD_DIR)/configuration.yaml
-EXAMPLE_DEFAULT := examples/awsregistrycachestacks/standard.yaml
+EXAMPLE_DEFAULT := examples/registrycaches/standard.yaml
 RENDER_TESTS := $(wildcard tests/test-*)
 E2E_TESTS := $(wildcard tests/e2etest-*)
 
 # Examples list - mirrors GitHub Actions workflow
 # Format: example_path::observed_resources_path (observed_resources_path is optional)
 EXAMPLES := \
-    examples/awsregistrycachestacks/minimal.yaml:: \
-    examples/awsregistrycachestacks/mirror.yaml:: \
-    examples/awsregistrycachestacks/standard.yaml::
+    examples/registrycaches/minimal.yaml:: \
+    examples/registrycaches/mirror.yaml:: \
+    examples/registrycaches/standard.yaml::
 
 clean:
 	rm -rf _output
@@ -97,7 +97,7 @@ validate: generate-configuration
 	$(MAKE) validate:all
 
 render\:%:
-	@example="examples/awsregistrycachestacks/$$*.yaml"; \
+	@example="examples/registrycaches/$$*.yaml"; \
 	if [ -f "$$example" ]; then \
 		echo "=== Rendering $$example ==="; \
 		up composition render --xrd=$(DEFINITION) $(COMPOSITION) $$example; \
@@ -107,7 +107,7 @@ render\:%:
 	fi
 
 validate\:%: generate-configuration
-	@example="examples/awsregistrycachestacks/$$*.yaml"; \
+	@example="examples/registrycaches/$$*.yaml"; \
 	if [ -f "$$example" ]; then \
 		echo "=== Validating $$example ==="; \
 		up composition render --xrd=$(DEFINITION) $(COMPOSITION) $$example \

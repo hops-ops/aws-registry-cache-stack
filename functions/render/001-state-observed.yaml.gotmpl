@@ -7,7 +7,6 @@
 {{- $readiness := dict }}
 
 {{- range $key := list
-  "ecr-registry-cache"
   "mirror-namespace"
   "mirror-service-account"
   "mirror-cluster-role"
@@ -28,6 +27,69 @@
   {{- $_ := set $readiness $key $ready }}
 {{- end }}
 
+# ==============================================================================
+# Pull-through cache rules and repository creation templates
+# ==============================================================================
+{{- $observedRules := dict }}
+{{- $observedTemplates := dict }}
+{{- range $rule := ($state.spec.effective.pullThrough.rules | default list) }}
+  {{- $ruleEntry := get $observedResources (printf "rule-%s" $rule.name) | default dict }}
+  {{- $ruleResource := $ruleEntry.resource | default dict }}
+  {{- $ruleStatus := $ruleResource.status | default dict }}
+  {{- $ruleAtProvider := $ruleStatus.atProvider | default dict }}
+  {{- $ruleReady := false }}
+  {{- range ($ruleStatus.conditions | default list) }}
+    {{- if and (eq .type "Ready") (eq .status "True") }}
+      {{- $ruleReady = true }}
+    {{- end }}
+  {{- end }}
+  {{- $createdAt := dig "createdAt" "" $ruleAtProvider }}
+  {{- if eq $createdAt "" }}
+    {{- $createdAt = dig "metadata" "creationTimestamp" "" $ruleResource }}
+  {{- end }}
+  {{- $observedRules = set $observedRules $rule.name (dict
+    "ready" $ruleReady
+    "registryId" ($ruleAtProvider.registryId | default "")
+    "ecrRepositoryPrefix" ($ruleAtProvider.ecrRepositoryPrefix | default "")
+    "upstreamRegistryUrl" ($ruleAtProvider.upstreamRegistryUrl | default "")
+    "createdAt" $createdAt
+  ) }}
+
+  {{- $templateEntry := get $observedResources (printf "template-%s" $rule.name) | default dict }}
+  {{- $templateResource := $templateEntry.resource | default dict }}
+  {{- $templateStatus := $templateResource.status | default dict }}
+  {{- $templateReady := false }}
+  {{- range ($templateStatus.conditions | default list) }}
+    {{- if and (eq .type "Ready") (eq .status "True") }}
+      {{- $templateReady = true }}
+    {{- end }}
+  {{- end }}
+  {{- $observedTemplates = set $observedTemplates $rule.name (dict
+    "ready" $templateReady
+  ) }}
+{{- end }}
+
+# ==============================================================================
+# Registry scanning configuration
+# ==============================================================================
+{{- $scanningEntry := get $observedResources "registry-scanning-configuration" | default dict }}
+{{- $scanningResource := $scanningEntry.resource | default dict }}
+{{- $scanningStatus := $scanningResource.status | default dict }}
+{{- $scanningAtProvider := $scanningStatus.atProvider | default dict }}
+{{- $scanningReady := false }}
+{{- range ($scanningStatus.conditions | default list) }}
+  {{- if and (eq .type "Ready") (eq .status "True") }}
+    {{- $scanningReady = true }}
+  {{- end }}
+{{- end }}
+
 {{- $state = set $state "observed" (dict
+  "raw" $observedResources
   "ready" $readiness
+  "rules" $observedRules
+  "templates" $observedTemplates
+  "scanning" (dict
+    "ready" $scanningReady
+    "scanType" ($scanningAtProvider.scanType | default "")
+  )
 ) }}

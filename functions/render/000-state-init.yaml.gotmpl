@@ -84,6 +84,34 @@
   {{- $regsyncMissingOnly = $regsyncSpec.missingOnly }}
 {{- end }}
 
+{{- $lifecyclePolicySpec := $mirrorSpec.lifecyclePolicy | default dict }}
+{{- $lifecyclePolicyEnabled := false }}
+{{- if hasKey $lifecyclePolicySpec "enabled" }}
+  {{- $lifecyclePolicyEnabled = $lifecyclePolicySpec.enabled }}
+{{- end }}
+{{- $untaggedExpireAfterDays := 1 }}
+{{- if hasKey $lifecyclePolicySpec "untaggedExpireAfterDays" }}
+  {{- $untaggedExpireAfterDays = $lifecyclePolicySpec.untaggedExpireAfterDays }}
+{{- end }}
+{{- $lifecyclePolicyText := $lifecyclePolicySpec.policy | default "" }}
+{{- if and $lifecyclePolicyEnabled (eq $lifecyclePolicyText "") }}
+  {{- $lifecyclePolicyText = (dict
+    "rules" (list (dict
+      "rulePriority" 1
+      "description" (printf "Expire untagged images after %d day(s)" $untaggedExpireAfterDays)
+      "selection" (dict
+        "tagStatus" "untagged"
+        "countType" "sinceImagePushed"
+        "countUnit" "days"
+        "countNumber" $untaggedExpireAfterDays
+      )
+      "action" (dict
+        "type" "expire"
+      )
+    ))
+  ) | toJson }}
+{{- end }}
+
 {{- $startingDeadlineSeconds := "" }}
 {{- $hasStartingDeadlineSeconds := false }}
 {{- if hasKey $mirrorSpec "startingDeadlineSeconds" }}
@@ -163,7 +191,12 @@
           )
         )
         "repositories" ($mirrorSpec.repositories | default list)
-        "tags" ($mirrorSpec.tags | default (dict "mode" "all"))
+        "tags" ($mirrorSpec.tags | default (dict "mode" "filtered" "allow" (list "^v.*")))
+        "lifecyclePolicy" (dict
+          "enabled" $lifecyclePolicyEnabled
+          "untaggedExpireAfterDays" $untaggedExpireAfterDays
+          "policy" $lifecyclePolicyText
+        )
         "regsync" (dict
           "missingOnly" $regsyncMissingOnly
           "interval" ($regsyncSpec.interval | default "6h")

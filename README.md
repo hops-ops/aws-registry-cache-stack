@@ -1,15 +1,23 @@
 # aws-registry-cache-stack
 
-`AWSRegistryCacheStack` combines two registry cache paths:
+`RegistryCache` (`registrycaches.aws.hops.ops.com.ai`) manages AWS ECR
+pull-through cache rules and scheduled OCI repository mirroring into ECR.
 
-- `ECRRegistryCache` for AWS-supported ECR pull-through cache upstreams such as
-  ECR Public, `registry.k8s.io`, Quay, Docker Hub, and GHCR.
-- A scheduled Kubernetes mirror job for unsupported OCI registries such as
-  `xpkg.crossplane.io` and `xpkg.upbound.io`.
+## Why RegistryCache?
 
-AWS ECR pull-through cache does not support arbitrary upstream registries, so
-Crossplane package registries are mirrored into private ECR repositories instead
-of being configured as pull-through rules.
+Without this stack, registry cache setup is split across ECR pull-through rules,
+repository creation templates, scanning configuration, Kubernetes discovery
+RBAC, mirror jobs, and optional EKS PodIdentity wiring.
+
+With this stack:
+
+- AWS-supported upstreams use native ECR pull-through cache rules.
+- Unsupported registries such as `xpkg.crossplane.io` and `xpkg.upbound.io` are
+  mirrored into private ECR repositories.
+- Mirror repositories can be created declaratively through ECR
+  `RepositoryCreationTemplate` resources with lifecycle policy attached.
+- Crossplane package resources can be discovered from the cluster so declared
+  providers, functions, and configurations are mirrored automatically.
 
 ## Getting Started
 
@@ -17,7 +25,7 @@ Create pull-through cache rules for supported public upstreams:
 
 ```yaml
 apiVersion: aws.hops.ops.com.ai/v1alpha1
-kind: AWSRegistryCacheStack
+kind: RegistryCache
 metadata:
   name: platform-registry-cache
   namespace: default
@@ -39,22 +47,19 @@ spec:
           enabled: true
 ```
 
-The stack depends on `ghcr.io/hops-ops/aws-ecr-registry-cache` and composes an
-`ECRRegistryCache` claim with the same name as the stack.
-
 Consumers pull through the private ECR host:
 
 ```text
 123456789012.dkr.ecr.us-east-2.amazonaws.com/kubernetes/nginx-slim:latest
 ```
 
-## Mirroring Crossplane Packages
+## Growing
 
-Enable the mirror job to copy unsupported repositories into ECR:
+Enable the mirror job for unsupported OCI registries:
 
 ```yaml
 apiVersion: aws.hops.ops.com.ai/v1alpha1
-kind: AWSRegistryCacheStack
+kind: RegistryCache
 metadata:
   name: platform-registry-cache
   namespace: default
@@ -80,7 +85,7 @@ Source refs are normalized to repositories before mirroring. For example:
 xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr:v2.5.0
 ```
 
-mirrors every tag from:
+mirrors release tags from:
 
 ```text
 xpkg.crossplane.io/crossplane-contrib/provider-aws-ecr
@@ -101,31 +106,45 @@ The job also discovers live Crossplane package resources by reading:
 Explicit repositories and discovered repositories are deduplicated by normalized
 source repository.
 
-## Mirror Runtime
+## Enterprise Scale
 
-The default CronJob image is:
+Use declarative repository creation templates for mirror-created repositories
+when lifecycle policy, repository policy, or tag behavior should be controlled by
+ECR instead of the mirror script:
 
-```text
-ghcr.io/hops-ops/registry-cache-mirror:latest
+```yaml
+spec:
+  mirror:
+    enabled: true
+    lifecyclePolicy:
+      enabled: true
+      untaggedExpireAfterDays: 1
 ```
 
-That image is built from `images/mirror/Dockerfile` in this repo and includes
-`sh`, `kubectl`, `jq`, `aws`, `regsync`, and `docker-credential-ecr-login`.
-Override `spec.mirror.image` if you build a different utility image.
+When lifecycle policy is enabled, the stack renders ECR
+`RepositoryCreationTemplate` resources with `appliedFor: ["CREATE_ON_PUSH"]`.
+The mirror wrapper stops calling `aws ecr create-repository`; ECR creates new
+repositories on first push and applies the template policy.
 
-The wrapper creates missing ECR repositories, writes a repository-mode
-`regsync.yml`, and runs:
-
-```bash
-regsync once --missing
-```
-
-Set `spec.mirror.regsync.missingOnly: false` to run `regsync once` instead.
+This affects future repositories created through the template. Existing ECR
+repositories need their lifecycle policy applied separately or adopted under a
+future explicit repository-management feature.
 
 ## Tag Filters
 
-All tags are mirrored by default. Add repository-specific filters when storage
-cost or blast radius matters:
+Mirror tag policy defaults to release-style tags that start with `v`:
+
+```yaml
+spec:
+  mirror:
+    tags:
+      mode: filtered
+      allow:
+        - "^v.*"
+```
+
+Override the policy globally or per repository when a source needs different
+tags:
 
 ```yaml
 spec:
@@ -141,6 +160,26 @@ spec:
 
 The wrapper passes `allow`, `deny`, and `semverRange` filters into generated
 `regsync` repository entries.
+
+## Mirror Runtime
+
+The default CronJob image is:
+
+```text
+ghcr.io/hops-ops/registry-cache-mirror:latest
+```
+
+That image is built from `images/mirror/Dockerfile` in this repo and includes
+`sh`, `kubectl`, `jq`, `aws`, `regsync`, and `docker-credential-ecr-login`.
+Override `spec.mirror.image` if you build a different utility image.
+
+The wrapper writes a repository-mode `regsync.yml` and runs:
+
+```bash
+regsync once --missing
+```
+
+Set `spec.mirror.regsync.missingOnly: false` to run `regsync once` instead.
 
 ## AWS Access
 
@@ -162,6 +201,33 @@ spec:
       enabled: false
 ```
 
+## Import Existing
+
+Set `spec.managementPolicies` to observe or update existing AWS resources before
+allowing create/delete behavior. Existing mirror-created ECR repositories are not
+claimed directly by this stack today; lifecycle policy on existing repositories
+must be managed separately until explicit repository adoption is added.
+
+## Status
+
+`status.registry.host` exposes the target private ECR registry.
+`status.pullThrough.rules[*].pullPrefix` exposes the private pull prefix for each
+native cache rule. `status.mirror` reports whether the mirror path is enabled,
+ready, which registry it targets, and how many mirror repository creation
+templates are rendered.
+
+## Composed Resources
+
+- `PullThroughCacheRule` - one direct ECR pull-through cache rule per
+  `spec.pullThrough.rules[]` entry.
+- `RepositoryCreationTemplate` - optional ECR templates for pull-through
+  repositories and mirror create-on-push repositories.
+- `RegistryScanningConfiguration` - optional registry-wide ECR enhanced scanning
+  configuration for pull-through prefixes.
+- `Object` - Kubernetes namespace, ServiceAccount, RBAC, ConfigMap, and CronJob
+  resources for the mirror runtime.
+- `PodIdentity` - optional EKS PodIdentity for mirror ECR write access.
+
 ## Crossplane ImageConfig
 
 This stack does not create Crossplane `ImageConfig` resources. Rewriting package
@@ -181,11 +247,13 @@ For local control plane iteration:
 
 ```bash
 hops config install --path xrs/stacks/aws/registry-cache --context colima
-kubectl --context colima apply -f examples/awsregistrycachestacks/standard.yaml
+kubectl --context colima apply -f examples/registrycaches/standard.yaml
 ```
 
 ## References
 
 - regsync usage: https://regclient.org/usage/regsync/
 - ECR pull-through cache: https://docs.aws.amazon.com/AmazonECR/latest/userguide/pull-through-cache.html
+- ECR repository creation templates: https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-creation-templates.html
+- ECR lifecycle policies: https://docs.aws.amazon.com/AmazonECR/latest/userguide/LifecyclePolicies.html
 - Crossplane ImageConfig: https://docs.crossplane.io/latest/packages/image-configs/

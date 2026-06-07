@@ -31,11 +31,11 @@ jobs:
     with:
       examples: |
         [
-          { "example": "examples/awsregistrycachestacks/minimal.yaml" },
-          { "example": "examples/awsregistrycachestacks/mirror.yaml" },
-          { "example": "examples/awsregistrycachestacks/standard.yaml" }
+          { "example": "examples/registrycaches/minimal.yaml" },
+          { "example": "examples/registrycaches/mirror.yaml" },
+          { "example": "examples/registrycaches/standard.yaml" }
         ]
-      api_path: apis/awsregistrycachestacks
+      api_path: apis/registrycaches
       error_on_missing_schemas: true
 
   test:
