@@ -107,6 +107,7 @@ spec:
                   image:
                     description: Distribution registry image.
                     type: string
+                    # renovate: datasource=docker depName=library/registry registryUrl=https://index.docker.io
                     default: registry:3
                   imagePullPolicy:
                     type: string

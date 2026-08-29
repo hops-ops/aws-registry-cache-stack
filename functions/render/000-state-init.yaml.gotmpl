@@ -112,6 +112,9 @@
   "sectionNames" $distributionGatewayRefSectionNames
 }}
 
+# renovate: datasource=docker depName=library/registry registryUrl=https://index.docker.io
+{{- $distributionImage := $distributionSpec.image | default "registry:3" }}
+
 # ==============================================================================
 # Initialize $state namespace
 # ==============================================================================
@@ -134,7 +137,7 @@
         "enabled" $distributionEnabled
         "namespace" $distributionNamespace
         "createNamespace" $distributionCreateNamespace
-        "image" ($distributionSpec.image | default "registry:3")
+        "image" $distributionImage
         "imagePullPolicy" $distributionImagePullPolicy
         "replicas" $distributionReplicas
         "serviceAccount" (dict

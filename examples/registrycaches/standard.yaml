@@ -21,6 +21,7 @@ spec:
   distribution:
     enabled: true
     namespace: crossplane-system
+    # renovate: datasource=docker depName=library/registry registryUrl=https://index.docker.io
     image: registry:3
     storage:
       bucketName: platform-registry-cache

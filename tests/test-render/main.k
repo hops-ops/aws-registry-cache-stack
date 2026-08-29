@@ -119,6 +119,7 @@ _items = [
                             containers = [
                                 {
                                     name = "registry"
+                                    # renovate: datasource=docker depName=library/registry registryUrl=https://index.docker.io
                                     image = "registry:3"
                                     args = [
                                         "serve"
