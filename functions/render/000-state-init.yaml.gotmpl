@@ -169,6 +169,7 @@
           "enabled" $distributionGatewayEnabled
           "hostname" ($distributionGatewaySpec.hostname | default "")
           "port" ($distributionGatewaySpec.port | default 443)
+          "httpRouteAnnotations" ($distributionGatewaySpec.httpRouteAnnotations | default dict)
           "gatewayRef" $distributionGatewayRef
         )
         "upstreams" ($distributionSpec.upstreams | default list)
