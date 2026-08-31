@@ -199,6 +199,9 @@ _items = [
                         gateway = {
                             enabled = True
                             hostname = "rc.internal.example.com"
+                            httpRouteAnnotations = {
+                                "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
+                            }
                             gatewayRef = {
                                 name = "platform"
                                 namespace = "istio-ingress"
@@ -278,6 +281,9 @@ _items = [
                             metadata = {
                                 name = "platform-dist-docker-hub-root"
                                 namespace = "crossplane-system"
+                                annotations = {
+                                    "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
+                                }
                             }
                             spec = {
                                 parentRefs = [
@@ -327,6 +333,9 @@ _items = [
                             metadata = {
                                 name = "platform-dist-docker-hub"
                                 namespace = "crossplane-system"
+                                annotations = {
+                                    "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
+                                }
                             }
                             spec = {
                                 parentRefs = [

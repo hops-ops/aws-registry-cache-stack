@@ -20,6 +20,8 @@ spec:
     gateway:
       enabled: true
       hostname: rc.internal.example.com
+      httpRouteAnnotations:
+        external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
       gatewayRef:
         name: platform
         namespace: istio-ingress

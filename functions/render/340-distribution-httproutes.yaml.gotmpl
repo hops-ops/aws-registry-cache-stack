@@ -24,6 +24,9 @@ spec:
         name: {{ $route.resourceName }}
         namespace: {{ $cache.distribution.namespace }}
         labels: {{ $route.labels | toJson }}
+        {{- with $cache.distribution.gateway.httpRouteAnnotations }}
+        annotations: {{ . | toJson }}
+        {{- end }}
       spec:
         parentRefs:
         {{- range $sn := $route.gatewayRef.sectionNames }}
@@ -65,6 +68,9 @@ spec:
         name: {{ $upstream.gateway.httpRouteName }}
         namespace: {{ $cache.distribution.namespace }}
         labels: {{ $upstream.labels | toJson }}
+        {{- with $cache.distribution.gateway.httpRouteAnnotations }}
+        annotations: {{ . | toJson }}
+        {{- end }}
       spec:
         parentRefs:
         {{- range $sn := $upstream.gateway.gatewayRef.sectionNames }}

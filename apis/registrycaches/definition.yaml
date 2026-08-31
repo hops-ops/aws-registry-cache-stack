@@ -216,6 +216,12 @@ spec:
                         minimum: 1
                         maximum: 65535
                         default: 443
+                      httpRouteAnnotations:
+                        description: Annotations applied to rendered HTTPRoutes, such as ExternalDNS provider overrides.
+                        type: object
+                        additionalProperties:
+                          type: string
+                        x-kubernetes-preserve-unknown-fields: true
                       gatewayRef:
                         description: Gateway API parentRef that HTTPRoutes attach to.
                         type: object

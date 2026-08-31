@@ -61,6 +61,8 @@ spec:
     gateway:
       enabled: true
       hostname: rc.internal.example.com
+      httpRouteAnnotations:
+        external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
       gatewayRef:
         name: platform
         namespace: istio-ingress
@@ -176,6 +178,8 @@ spec:
     gateway:
       enabled: true
       hostname: rc.internal.example.com
+      httpRouteAnnotations:
+        external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"
       gatewayRef:
         name: platform
         namespace: istio-ingress
@@ -187,6 +191,12 @@ spec:
         rewrite:
           enabled: true
 ```
+
+`httpRouteAnnotations` is applied to both the registry ping route and each
+upstream route. When ExternalDNS is configured to proxy Cloudflare records by
+default, set `external-dns.alpha.kubernetes.io/cloudflare-proxied: "false"` for
+an internal load balancer. This keeps the DNS record resolvable by cluster nodes
+without routing registry traffic through Cloudflare.
 
 For each exposed upstream, the stack renders an `HTTPRoute` matching
 `/v2/<normalized matchPrefix>`, rewrites that path back to `/v2`, and sends the
