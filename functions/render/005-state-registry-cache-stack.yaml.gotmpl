@@ -11,6 +11,9 @@
 {{- $renderDistributionBucket := and $renderDistribution $distribution.storage.createBucket (eq $distribution.storage.type "s3") }}
 {{- $renderDistributionNamespace := and $renderDistribution $distribution.createNamespace }}
 {{- $renderDistributionTlsIssuer := and $renderDistribution $distribution.tls.enabled $distribution.tls.createIssuer }}
+{{- if and $renderDistribution (eq $distribution.storage.type "pvc") (gt ($distribution.replicas | int) 1) (eq $distribution.storage.pvc.accessMode "ReadWriteOnce") }}
+  {{- fail "spec.distribution.replicas must be 1 when storage.type is pvc and pvc.accessMode is ReadWriteOnce" }}
+{{- end }}
 
 {{- $distributionResourceName := trimAll "-" (trunc 63 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-distribution" $eff.name)) "-")) }}
 {{- $distributionUpstreams := list }}
@@ -27,6 +30,9 @@
   {{- end }}
   {{- $servicePort := $serviceSpec.port | default $defaultServicePort }}
   {{- $k8sName := trimAll "-" (trunc 63 (regexReplaceAll "[^a-z0-9-]+" (lower ($serviceSpec.name | default $upstream.name)) "-")) }}
+  {{- if eq $k8sName "" }}
+    {{- fail (printf "spec.distribution.upstreams[%s] sanitized to an empty Service name; set service.name to a DNS label" $upstream.name) }}
+  {{- end }}
   {{- $objectBaseName := trimAll "-" (trunc 45 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-%s" $eff.name $upstream.name)) "-")) }}
   {{- $defaultRemoteUrl := printf "https://%s" $upstream.sourceRegistry }}
   {{- if eq $upstream.sourceRegistry "xpkg.crossplane.io" }}
@@ -106,10 +112,13 @@
     {{- $clusterRewriteHost = printf "%s:%d" $clusterRewriteHost $servicePort }}
   {{- end }}
   {{- $defaultRewritePrefix := $gatewayRegistryPrefix }}
-  {{- if eq $defaultRewritePrefix "" }}
+  {{- if and (eq $defaultRewritePrefix "") $tlsEnabled }}
     {{- $defaultRewritePrefix = $clusterRewriteHost }}
   {{- end }}
   {{- $rewritePrefix := $rewriteSpec.prefix | default $defaultRewritePrefix }}
+  {{- if and $rewriteEnabled (not $gatewayEnabled) (not $tlsEnabled) (eq ($rewriteSpec.prefix | default "") "") }}
+    {{- fail (printf "spec.distribution.upstreams[%s].rewrite requires TLS or rewrite.prefix when gateway exposure is disabled (Crossplane uses HTTPS)" $upstream.name) }}
+  {{- end }}
   {{- if and $rewriteEnabled (eq $rewritePrefix "") }}
     {{- fail (printf "spec.distribution.upstreams[%s].rewrite.prefix is required when rewrite.enabled is true unless gateway exposure is enabled" $upstream.name) }}
   {{- end }}

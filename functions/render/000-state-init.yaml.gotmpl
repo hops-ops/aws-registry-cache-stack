@@ -198,6 +198,8 @@
           "enabled" $distributionTlsEnabled
           "issuerName" $distributionTlsIssuerName
           "createIssuer" $distributionTlsCreateIssuer
+          "bootstrapIssuerName" (printf "%s-bootstrap" $distributionTlsIssuerName)
+          "caSecretName" (printf "%s-ca" $distributionTlsIssuerName)
         )
         "gateway" (dict
           "enabled" $distributionGatewayEnabled

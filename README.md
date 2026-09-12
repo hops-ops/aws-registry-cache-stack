@@ -86,9 +86,9 @@ xpkg-crossplane.crossplane-system.svc.cluster.local
 ```
 
 That is HTTPS on 443 (cert-manager, SAN = the Service DNS). Crossplane always
-uses HTTPS; `http://…:5000` will not work for package pulls. Mount the Issuer
-CA on the Crossplane pod (`SSL_CERT_DIR` / extra volume) so x509 verification
-succeeds.
+uses HTTPS; `http://…:5000` will not work for package pulls. Mount the CA
+Secret (`<xr-name>-registry-cache-ca`, key `ca.crt`) on the Crossplane pod
+(`SSL_CERT_DIR` / extra volume) so x509 verification succeeds.
 
 In-cluster only: leave `gateway.enabled` false (the default) and do not publish
 the cache on ExternalDNS. Gateway exposure remains optional for a shared

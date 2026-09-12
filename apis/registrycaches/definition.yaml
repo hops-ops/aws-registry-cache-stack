@@ -324,6 +324,9 @@ spec:
                             name:
                               description: Service and Deployment name in the Distribution namespace. Defaults to the upstream name (e.g. ghcr), not prefixed with the XR name.
                               type: string
+                              minLength: 1
+                              maxLength: 63
+                              pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
                             type:
                               type: string
                               enum:
@@ -376,6 +379,15 @@ spec:
                     type: string
                   bucketName:
                     type: string
+                  storageType:
+                    type: string
+                  tls:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      caSecretName:
+                        type: string
                   upstreams:
                     type: array
                     items:

@@ -3,9 +3,66 @@
 # In-cluster TLS for kube-DNS registry names. Crossplane talks HTTPS;
 # Distribution is HTTP unless these certs are mounted.
 #
+# Bootstrap Issuer (selfSigned) -> CA Certificate -> CA Issuer -> leaf certs.
+# Mount tls.caSecretName (ca.crt) on Crossplane so x509 to *.svc.cluster.local works.
+#
 
 {{- $cache := $state.registryCache }}
 {{- if $cache.distribution.renderTlsIssuer }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ printf "%s-tls-bootstrap" $cache.distribution.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation "distribution-tls-bootstrap" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: cert-manager.io/v1
+      kind: Issuer
+      metadata:
+        name: {{ $cache.distribution.tls.bootstrapIssuerName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $cache.labels | toJson }}
+      spec:
+        selfSigned: {}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ printf "%s-tls-ca" $cache.distribution.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation "distribution-tls-ca" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: {{ $cache.distribution.tls.caSecretName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $cache.labels | toJson }}
+      spec:
+        isCA: true
+        commonName: {{ $cache.distribution.tls.caSecretName | quote }}
+        secretName: {{ $cache.distribution.tls.caSecretName }}
+        privateKey:
+          algorithm: ECDSA
+          size: 256
+        issuerRef:
+          name: {{ $cache.distribution.tls.bootstrapIssuerName }}
+          kind: Issuer
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
 ---
 apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
@@ -25,7 +82,8 @@ spec:
         namespace: {{ $cache.distribution.namespace }}
         labels: {{ $cache.labels | toJson }}
       spec:
-        selfSigned: {}
+        ca:
+          secretName: {{ $cache.distribution.tls.caSecretName }}
   providerConfigRef:
     name: {{ $cache.providerConfigRefs.kubernetes.name }}
     kind: {{ $cache.providerConfigRefs.kubernetes.kind }}

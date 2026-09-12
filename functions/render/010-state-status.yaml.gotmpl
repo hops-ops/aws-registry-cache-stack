@@ -25,8 +25,12 @@
   {{- if not (get $readyMap "distribution-service-account" | default false) }}
     {{- $distributionReady = false }}
   {{- end }}
-  {{- if and $cache.distribution.renderTlsIssuer (not (get $readyMap "distribution-tls-issuer" | default false)) }}
-    {{- $distributionReady = false }}
+  {{- if $cache.distribution.renderTlsIssuer }}
+    {{- range $key := list "distribution-tls-bootstrap" "distribution-tls-ca" "distribution-tls-issuer" }}
+      {{- if not (get $readyMap $key | default false) }}
+        {{- $distributionReady = false }}
+      {{- end }}
+    {{- end }}
   {{- end }}
   {{- if and $cache.distribution.renderPodIdentity (not (get $readyMap "distribution-pod-identity" | default false)) }}
     {{- $distributionReady = false }}
@@ -84,6 +88,11 @@
     "ready" $distributionReady
     "namespace" $cache.distribution.namespace
     "bucketName" $cache.distribution.storage.bucketName
+    "storageType" $cache.distribution.storage.type
+    "tls" (dict
+      "enabled" $cache.distribution.tls.enabled
+      "caSecretName" $cache.distribution.tls.caSecretName
+    )
     "upstreams" $distributionUpstreams
   )
 ) }}
