@@ -129,11 +129,12 @@
 {{- if hasKey $distributionTlsSpec "enabled" }}
   {{- $distributionTlsEnabled = $distributionTlsSpec.enabled }}
 {{- end }}
-{{- $distributionTlsIssuerName := $distributionTlsSpec.issuerName | default (printf "%s-registry-cache" $name) }}
-{{- $distributionTlsCreateIssuer := true }}
-{{- if hasKey $distributionTlsSpec "createIssuer" }}
-  {{- $distributionTlsCreateIssuer = $distributionTlsSpec.createIssuer }}
-{{- end }}
+{{- $distributionTlsIssuerRefSpec := $distributionTlsSpec.issuerRef | default dict }}
+{{- $distributionTlsIssuerRef := dict
+  "name" ($distributionTlsIssuerRefSpec.name | default "internal-ca")
+  "kind" ($distributionTlsIssuerRefSpec.kind | default "ClusterIssuer")
+  "group" ($distributionTlsIssuerRefSpec.group | default "cert-manager.io")
+}}
 
 # renovate: datasource=docker depName=library/registry registryUrl=https://index.docker.io
 {{- $distributionImage := $distributionSpec.image | default "registry:3" }}
@@ -196,10 +197,7 @@
         )
         "tls" (dict
           "enabled" $distributionTlsEnabled
-          "issuerName" $distributionTlsIssuerName
-          "createIssuer" $distributionTlsCreateIssuer
-          "bootstrapIssuerName" (printf "%s-bootstrap" $distributionTlsIssuerName)
-          "caSecretName" (printf "%s-ca" $distributionTlsIssuerName)
+          "issuerRef" $distributionTlsIssuerRef
         )
         "gateway" (dict
           "enabled" $distributionGatewayEnabled

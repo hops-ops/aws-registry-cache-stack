@@ -14,9 +14,6 @@
   "distribution-bucket-lifecycle"
   "distribution-service-account"
   "distribution-pod-identity"
-  "distribution-tls-bootstrap"
-  "distribution-tls-ca"
-  "distribution-tls-issuer"
 }}
   {{- $entry := get $observedResources $key | default dict }}
   {{- $resource := $entry.resource | default dict }}

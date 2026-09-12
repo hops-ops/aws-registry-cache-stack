@@ -153,18 +153,24 @@ spec:
                       permissionsBoundaryArn:
                         type: string
                   tls:
-                    description: In-cluster TLS for kube-DNS Service names. Defaults to enabled when gateway exposure is off so Crossplane can pull over HTTPS.
+                    description: In-cluster TLS for kube-DNS Service names. Defaults to enabled when gateway exposure is off. Leaf Certificates are issued by CertStack's internal CA ClusterIssuer (default name internal-ca). This stack does not create a CA.
                     type: object
                     properties:
                       enabled:
                         type: boolean
-                      issuerName:
-                        description: cert-manager Issuer name in the Distribution namespace. Defaults to <xr-name>-registry-cache.
-                        type: string
-                      createIssuer:
-                        description: Whether to render a self-signed cert-manager Issuer. Defaults to true when TLS is enabled.
-                        type: boolean
-                        default: true
+                      issuerRef:
+                        description: cert-manager issuer for leaf certificates. Defaults to ClusterIssuer internal-ca.
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            default: internal-ca
+                          kind:
+                            type: string
+                            default: ClusterIssuer
+                          group:
+                            type: string
+                            default: cert-manager.io
                   storage:
                     description: Cache blob storage. s3 (default), pvc (EBS/filesystem), or emptyDir (ephemeral).
                     type: object
@@ -386,7 +392,7 @@ spec:
                     properties:
                       enabled:
                         type: boolean
-                      caSecretName:
+                      issuerName:
                         type: string
                   upstreams:
                     type: array

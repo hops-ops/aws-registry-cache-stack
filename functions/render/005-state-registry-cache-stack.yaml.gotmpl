@@ -10,7 +10,6 @@
 {{- $renderDistributionPodIdentity := and $renderDistribution $distribution.podIdentity.enabled (eq $distribution.storage.type "s3") }}
 {{- $renderDistributionBucket := and $renderDistribution $distribution.storage.createBucket (eq $distribution.storage.type "s3") }}
 {{- $renderDistributionNamespace := and $renderDistribution $distribution.createNamespace }}
-{{- $renderDistributionTlsIssuer := and $renderDistribution $distribution.tls.enabled $distribution.tls.createIssuer }}
 {{- if and $renderDistribution (eq $distribution.storage.type "pvc") (gt ($distribution.replicas | int) 1) (eq $distribution.storage.pvc.accessMode "ReadWriteOnce") }}
   {{- fail "spec.distribution.replicas must be 1 when storage.type is pvc and pvc.accessMode is ReadWriteOnce" }}
 {{- end }}
@@ -183,7 +182,6 @@
     "renderNamespace" $renderDistributionNamespace
     "renderBucket" $renderDistributionBucket
     "renderPodIdentity" $renderDistributionPodIdentity
-    "renderTlsIssuer" $renderDistributionTlsIssuer
     "resourceName" $distributionResourceName
     "upstreams" $distributionUpstreams
     "gateway" (mergeOverwrite (dict) $distributionGateway (dict

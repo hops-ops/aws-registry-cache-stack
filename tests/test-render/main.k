@@ -567,44 +567,6 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-distribution-tls-bootstrap"
-                    spec.forProvider.manifest = {
-                        apiVersion = "cert-manager.io/v1"
-                        kind = "Issuer"
-                        metadata.name = "platform-registry-cache-bootstrap"
-                    }
-                }
-                {
-                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
-                    kind = "Object"
-                    metadata.name = "platform-distribution-tls-ca"
-                    spec.forProvider.manifest = {
-                        apiVersion = "cert-manager.io/v1"
-                        kind = "Certificate"
-                        spec = {
-                            isCA = True
-                            secretName = "platform-registry-cache-ca"
-                        }
-                    }
-                }
-                {
-                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
-                    kind = "Object"
-                    metadata.name = "platform-distribution-tls-issuer"
-                    spec.forProvider.manifest = {
-                        apiVersion = "cert-manager.io/v1"
-                        kind = "Issuer"
-                        metadata.name = "platform-registry-cache"
-                        spec = {
-                            ca = {
-                                secretName = "platform-registry-cache-ca"
-                            }
-                        }
-                    }
-                }
-                {
-                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
-                    kind = "Object"
                     metadata.name = "platform-ghcr-cert"
                     spec.forProvider.manifest = {
                         apiVersion = "cert-manager.io/v1"
@@ -616,8 +578,9 @@ _items = [
                                 "ghcr.crossplane-system.svc.cluster.local"
                             ]
                             issuerRef = {
-                                name = "platform-registry-cache"
-                                kind = "Issuer"
+                                name = "internal-ca"
+                                kind = "ClusterIssuer"
+                                group = "cert-manager.io"
                             }
                         }
                     }

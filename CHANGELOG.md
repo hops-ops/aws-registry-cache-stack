@@ -11,8 +11,9 @@
   plain HTTP `:5000` is not used for package pulls.
 - Add `spec.distribution.storage.type`: `s3` (default), `pvc`, or `emptyDir`.
   `pvc` is one RWO volume per upstream; S3 bucket and PodIdentity are skipped.
-- Add `spec.distribution.tls` to opt out or point at an existing Issuer. TLS
-  uses a shared cert-manager CA (not per-service self-signed leaves).
+- Add `spec.distribution.tls` (leaf Certificates only). Default issuer is
+  ClusterIssuer `internal-ca` from CertStack `spec.internalCA`. This stack
+  does not create a CA.
 - PVC + ReadWriteOnce rejects `replicas` greater than 1. Rewrite without
   gateway requires TLS or an explicit `rewrite.prefix`.
 
