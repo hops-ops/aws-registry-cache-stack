@@ -1,0 +1,40 @@
+apiVersion: aws.hops.ops.com.ai/v1alpha1
+kind: RegistryCache
+metadata:
+  name: platform-registry-cache
+  namespace: default
+spec:
+  accountId: "123456789012"
+  region: us-east-2
+  clusterName: platform-cluster
+  providerConfigRefs:
+    kubernetes:
+      name: platform-cluster
+      kind: ProviderConfig
+  distribution:
+    enabled: true
+    namespace: crossplane-system
+    storage:
+      type: pvc
+      pvc:
+        size: 20Gi
+        storageClassName: gp3
+    upstreams:
+      - name: ghcr
+        sourceRegistry: ghcr.io
+        rewrite:
+          enabled: true
+      - name: xpkg-crossplane
+        sourceRegistry: xpkg.crossplane.io
+        rewrite:
+          enabled: true
+      - name: xpkg-upbound
+        sourceRegistry: xpkg.upbound.io
+        rewrite:
+          enabled: true
+      - name: docker-hub
+        sourceRegistry: registry-1.docker.io
+        matchPrefix: docker.io
+        remoteUrl: https://registry-1.docker.io
+        rewrite:
+          enabled: true

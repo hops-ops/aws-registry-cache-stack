@@ -30,6 +30,7 @@ spec:
           log:
             level: info
           storage:
+            {{- if eq $cache.distribution.storage.type "s3" }}
             s3:
               region: {{ $cache.region }}
               bucket: {{ $cache.distribution.storage.bucketName }}
@@ -43,6 +44,10 @@ spec:
               {{- if $cache.distribution.storage.forcePathStyle }}
               forcepathstyle: true
               {{- end }}
+            {{- else }}
+            filesystem:
+              rootdirectory: /var/lib/registry
+            {{- end }}
             delete:
               enabled: true
             cache:
@@ -54,8 +59,13 @@ spec:
                 interval: 24h
                 dryrun: false
           http:
-            addr: :5000
+            addr: {{ if $upstream.tls.enabled }}:443{{ else }}:5000{{ end }}
             secret: {{ printf "%s-%s" $cache.name $upstream.name | quote }}
+            {{- if $upstream.tls.enabled }}
+            tls:
+              certificate: /certs/tls.crt
+              key: /certs/tls.key
+            {{- end }}
             headers:
               X-Content-Type-Options:
                 - nosniff

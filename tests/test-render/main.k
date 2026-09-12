@@ -21,6 +21,9 @@ _items = [
                     region = "us-east-2"
                     distribution = {
                         enabled = True
+                        tls = {
+                            enabled = False
+                        }
                         podIdentity = {
                             enabled = False
                         }
@@ -93,12 +96,12 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-xpkg-crossplane-config"
+                    metadata.name = "platform-xpkg-crossplane-config"
                     spec.forProvider.manifest = {
                         apiVersion = "v1"
                         kind = "ConfigMap"
                         metadata = {
-                            name = "platform-dist-xpkg-crossplane"
+                            name = "xpkg-crossplane"
                             namespace = "crossplane-system"
                         }
                     }
@@ -106,12 +109,12 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-xpkg-crossplane-deploy"
+                    metadata.name = "platform-xpkg-crossplane-deploy"
                     spec.forProvider.manifest = {
                         apiVersion = "apps/v1"
                         kind = "Deployment"
                         metadata = {
-                            name = "platform-dist-xpkg-crossplane"
+                            name = "xpkg-crossplane"
                             namespace = "crossplane-system"
                         }
                         spec.template.spec = {
@@ -133,12 +136,12 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-xpkg-crossplane-service"
+                    metadata.name = "platform-xpkg-crossplane-service"
                     spec.forProvider.manifest = {
                         apiVersion = "v1"
                         kind = "Service"
                         metadata = {
-                            name = "platform-dist-xpkg-crossplane"
+                            name = "xpkg-crossplane"
                             namespace = "crossplane-system"
                         }
                         spec = {
@@ -255,7 +258,7 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-docker-hub-deploy"
+                    metadata.name = "platform-docker-hub-deploy"
                     spec = {
                         providerConfigRef = {
                             name = "platform-cluster"
@@ -269,7 +272,7 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-docker-hub-root-httproute"
+                    metadata.name = "platform-docker-hub-root-httproute"
                     spec = {
                         providerConfigRef = {
                             name = "platform-cluster"
@@ -279,7 +282,7 @@ _items = [
                             apiVersion = "gateway.networking.k8s.io/v1"
                             kind = "HTTPRoute"
                             metadata = {
-                                name = "platform-dist-docker-hub-root"
+                                name = "platform-docker-hub-root"
                                 namespace = "crossplane-system"
                                 annotations = {
                                     "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
@@ -308,7 +311,7 @@ _items = [
                                         ]
                                         backendRefs = [
                                             {
-                                                name = "platform-dist-docker-hub"
+                                                name = "docker-hub"
                                                 port = 5000
                                             }
                                         ]
@@ -321,7 +324,7 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-docker-hub-httproute"
+                    metadata.name = "platform-docker-hub-httproute"
                     spec = {
                         providerConfigRef = {
                             name = "platform-cluster"
@@ -331,7 +334,7 @@ _items = [
                             apiVersion = "gateway.networking.k8s.io/v1"
                             kind = "HTTPRoute"
                             metadata = {
-                                name = "platform-dist-docker-hub"
+                                name = "docker-hub"
                                 namespace = "crossplane-system"
                                 annotations = {
                                     "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
@@ -371,7 +374,7 @@ _items = [
                                         ]
                                         backendRefs = [
                                             {
-                                                name = "platform-dist-docker-hub"
+                                                name = "docker-hub"
                                                 port = 5000
                                             }
                                         ]
@@ -384,7 +387,7 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-docker-hub-imgcfg"
+                    metadata.name = "platform-docker-hub-imgcfg"
                     spec = {
                         providerConfigRef = {
                             name = "platform-cluster"
@@ -393,7 +396,7 @@ _items = [
                         forProvider.manifest = {
                             apiVersion = "pkg.crossplane.io/v1beta1"
                             kind = "ImageConfig"
-                            metadata.name = "platform-dist-docker-hub"
+                            metadata.name = "docker-hub"
                             spec = {
                                 matchImages = [
                                     {
@@ -411,11 +414,11 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-xpkg-upbound-config"
+                    metadata.name = "platform-xpkg-upbound-config"
                     spec.forProvider.manifest = {
                         apiVersion = "v1"
                         kind = "ConfigMap"
-                        metadata.name = "platform-dist-xpkg-upbound"
+                        metadata.name = "xpkg-upbound"
                     }
                 }
             ]
@@ -441,6 +444,9 @@ _items = [
                     region = "us-east-2"
                     distribution = {
                         enabled = True
+                        tls = {
+                            enabled = False
+                        }
                         podIdentity = {
                             enabled = False
                         }
@@ -466,7 +472,7 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-ghcr-service"
+                    metadata.name = "platform-ghcr-service"
                     spec.forProvider.manifest.spec = {
                         type = "NodePort"
                         ports = [
@@ -481,13 +487,133 @@ _items = [
                 {
                     apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
                     kind = "Object"
-                    metadata.name = "platform-dist-ghcr-imgcfg"
+                    metadata.name = "platform-ghcr-imgcfg"
                     spec.forProvider.manifest = {
                         apiVersion = "pkg.crossplane.io/v1beta1"
                         kind = "ImageConfig"
                         metadata.name = "ghcr-cache"
                         spec.rewriteImage = {
                             prefix = "registry-cache.internal:5050"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+
+    {
+        apiVersion = "meta.dev.upbound.io/v1alpha1"
+        kind = "CompositionTest"
+        metadata.name = "distribution-pvc-kube-dns-tls-rewrite"
+        spec = {
+            compositionPath = _composition
+            xrdPath = _xrd
+            timeoutSeconds = 60
+            validate = False
+            xr = {
+                apiVersion = "aws.hops.ops.com.ai/v1alpha1"
+                kind = "RegistryCache"
+                metadata.name = "platform"
+                metadata.namespace = "default"
+                spec = {
+                    accountId = "123456789012"
+                    region = "us-east-2"
+                    distribution = {
+                        enabled = True
+                        storage = {
+                            type = "pvc"
+                            pvc = {
+                                size = "20Gi"
+                                storageClassName = "gp3"
+                            }
+                        }
+                        upstreams = [
+                            {
+                                name = "ghcr"
+                                sourceRegistry = "ghcr.io"
+                                rewrite = {
+                                    enabled = True
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+            assertResources = [
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-ghcr-pvc"
+                    spec.forProvider.manifest = {
+                        apiVersion = "v1"
+                        kind = "PersistentVolumeClaim"
+                        metadata = {
+                            name = "ghcr"
+                            namespace = "crossplane-system"
+                        }
+                        spec = {
+                            accessModes = [
+                                "ReadWriteOnce"
+                            ]
+                            storageClassName = "gp3"
+                            resources = {
+                                requests = {
+                                    storage = "20Gi"
+                                }
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-distribution-tls-issuer"
+                    spec.forProvider.manifest = {
+                        apiVersion = "cert-manager.io/v1"
+                        kind = "Issuer"
+                        metadata.name = "platform-registry-cache"
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-ghcr-cert"
+                    spec.forProvider.manifest = {
+                        apiVersion = "cert-manager.io/v1"
+                        kind = "Certificate"
+                        spec = {
+                            secretName = "ghcr-registry-tls"
+                            issuerRef = {
+                                name = "platform-registry-cache"
+                                kind = "Issuer"
+                            }
+                        }
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-ghcr-service"
+                    spec.forProvider.manifest.spec = {
+                        type = "ClusterIP"
+                        ports = [
+                            {
+                                name = "registry"
+                                port = 443
+                                targetPort = "registry"
+                            }
+                        ]
+                    }
+                }
+                {
+                    apiVersion = "kubernetes.m.crossplane.io/v1alpha1"
+                    kind = "Object"
+                    metadata.name = "platform-ghcr-imgcfg"
+                    spec.forProvider.manifest = {
+                        apiVersion = "pkg.crossplane.io/v1beta1"
+                        kind = "ImageConfig"
+                        spec.rewriteImage = {
+                            prefix = "ghcr.crossplane-system.svc.cluster.local"
                         }
                     }
                 }

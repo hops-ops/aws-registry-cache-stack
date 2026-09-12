@@ -1,0 +1,68 @@
+# code: language=yaml
+#
+# In-cluster TLS for kube-DNS registry names. Crossplane talks HTTPS;
+# Distribution is HTTP unless these certs are mounted.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if $cache.distribution.renderTlsIssuer }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ printf "%s-tls-issuer" $cache.distribution.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation "distribution-tls-issuer" }}
+  labels: {{ $cache.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: cert-manager.io/v1
+      kind: Issuer
+      metadata:
+        name: {{ $cache.distribution.tls.issuerName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $cache.labels | toJson }}
+      spec:
+        selfSigned: {}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- if and $cache.distribution.render $cache.distribution.tls.enabled }}
+{{- range $upstream := $cache.distribution.upstreams }}
+{{- if $upstream.tls.enabled }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.certificateResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-certificate-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: {{ $upstream.resourceName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $upstream.labels | toJson }}
+      spec:
+        secretName: {{ $upstream.tls.secretName }}
+        dnsNames:
+          {{- range $upstream.tls.dnsNames }}
+          - {{ . | quote }}
+          {{- end }}
+        issuerRef:
+          name: {{ $cache.distribution.tls.issuerName }}
+          kind: Issuer
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}
+{{- end }}
