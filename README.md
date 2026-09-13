@@ -87,7 +87,8 @@ xpkg-crossplane.crossplane-system.svc.cluster.local
 
 That is HTTPS on 443 (SAN = the Service DNS). Leaf certs are issued by
 CertStack's `internal-ca` ClusterIssuer (`spec.distribution.tls.issuerRef`).
-This stack does not create a CA. Mount that ClusterIssuer's CA Secret
+This stack does not create a CA. Delete the RegistryCache before disabling
+CertStack `internalCA`. Mount that ClusterIssuer's CA Secret
 (`ca.crt`, cert-manager namespace) on the Crossplane pod so x509 verification
 succeeds. Crossplane always uses HTTPS; `http://…:5000` will not work for
 package pulls.
