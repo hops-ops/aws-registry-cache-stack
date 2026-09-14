@@ -200,7 +200,7 @@ _items = [
                             enabled = True
                             hostname = "rc.internal.example.com"
                             httpRouteAnnotations = {
-                                "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
+                                "external-dns.kubernetes.io/cloudflare-proxied" = "false"
                             }
                             gatewayRef = {
                                 name = "platform"
@@ -282,7 +282,7 @@ _items = [
                                 name = "platform-dist-docker-hub-root"
                                 namespace = "crossplane-system"
                                 annotations = {
-                                    "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
+                                    "external-dns.kubernetes.io/cloudflare-proxied" = "false"
                                 }
                             }
                             spec = {
@@ -334,7 +334,7 @@ _items = [
                                 name = "platform-dist-docker-hub"
                                 namespace = "crossplane-system"
                                 annotations = {
-                                    "external-dns.alpha.kubernetes.io/cloudflare-proxied" = "false"
+                                    "external-dns.kubernetes.io/cloudflare-proxied" = "false"
                                 }
                             }
                             spec = {
