@@ -152,10 +152,49 @@ spec:
                         type: string
                       permissionsBoundaryArn:
                         type: string
-                  storage:
-                    description: S3 storage settings for Distribution proxy caches.
+                  tls:
+                    description: In-cluster TLS for kube-DNS Service names. Defaults to enabled when gateway exposure is off. Leaf Certificates are issued by CertStack's internal CA ClusterIssuer (default name internal-ca). This stack does not create a CA.
                     type: object
                     properties:
+                      enabled:
+                        type: boolean
+                      issuerRef:
+                        description: cert-manager issuer for leaf certificates. Defaults to ClusterIssuer internal-ca.
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            default: internal-ca
+                          kind:
+                            type: string
+                            default: ClusterIssuer
+                          group:
+                            type: string
+                            default: cert-manager.io
+                  storage:
+                    description: Cache blob storage. s3 (default), pvc (EBS/filesystem), or emptyDir (ephemeral).
+                    type: object
+                    properties:
+                      type:
+                        description: Storage driver. pvc is one RWO volume per upstream. emptyDir is lost on reschedule.
+                        type: string
+                        enum:
+                        - s3
+                        - pvc
+                        - emptyDir
+                        default: s3
+                      pvc:
+                        description: PersistentVolumeClaim settings when type is pvc.
+                        type: object
+                        properties:
+                          size:
+                            type: string
+                            default: 20Gi
+                          storageClassName:
+                            type: string
+                          accessMode:
+                            type: string
+                            default: ReadWriteOnce
                       bucketName:
                         description: S3 bucket name. Defaults to a sanitized account/region/XR-derived name.
                         type: string
@@ -279,7 +318,7 @@ spec:
                               type: boolean
                               default: false
                             prefix:
-                              description: Rewrite target prefix. Defaults to the generated Gateway hostname/path when gateway exposure is enabled. Otherwise this is required when rewrite.enabled is true.
+                              description: Rewrite target prefix. Defaults to the Gateway hostname/path when gateway exposure is enabled, otherwise to {service}.{namespace}.svc.cluster.local.
                               type: string
                             imageConfigName:
                               description: Optional ImageConfig name. Defaults to <xr-name>-distribution-<upstream-name>.
@@ -288,6 +327,12 @@ spec:
                           description: Kubernetes Service settings for the upstream proxy.
                           type: object
                           properties:
+                            name:
+                              description: Service and Deployment name in the Distribution namespace. Defaults to the upstream name (e.g. ghcr), not prefixed with the XR name.
+                              type: string
+                              minLength: 1
+                              maxLength: 63
+                              pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
                             type:
                               type: string
                               enum:
@@ -340,6 +385,15 @@ spec:
                     type: string
                   bucketName:
                     type: string
+                  storageType:
+                    type: string
+                  tls:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      issuerName:
+                        type: string
                   upstreams:
                     type: array
                     items:

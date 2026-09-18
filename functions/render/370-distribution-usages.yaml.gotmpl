@@ -1,0 +1,80 @@
+# code: language=yaml
+#
+# Deletion order: Deployment before PVC, TLS Certificate, and ConfigMap.
+#
+
+{{- $cache := $state.registryCache }}
+{{- $readyMap := $state.observed.ready | default dict }}
+{{- $objectAPI := "kubernetes.m.crossplane.io/v1alpha1" }}
+{{- if $cache.distribution.render }}
+{{- range $upstream := $cache.distribution.upstreams }}
+{{- $deployReady := get $readyMap (printf "distribution-deployment-%s" $upstream.name) | default false }}
+{{- $deployName := $upstream.deploymentResourceName }}
+
+{{- if and $deployReady (eq $cache.distribution.storage.type "pvc") (get $readyMap (printf "distribution-pvc-%s" $upstream.name) | default false) }}
+---
+apiVersion: protection.crossplane.io/v1beta1
+kind: Usage
+metadata:
+  name: {{ printf "%s-delete-deploy-before-pvc" $upstream.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "usage-deploy-before-pvc-%s" $upstream.name) }}
+spec:
+  replayDeletion: true
+  of:
+    apiVersion: {{ $objectAPI }}
+    kind: Object
+    resourceRef:
+      name: {{ $upstream.pvcResourceName }}
+  by:
+    apiVersion: {{ $objectAPI }}
+    kind: Object
+    resourceRef:
+      name: {{ $deployName }}
+{{- end }}
+
+{{- if and $deployReady $upstream.tls.enabled (get $readyMap (printf "distribution-certificate-%s" $upstream.name) | default false) }}
+---
+apiVersion: protection.crossplane.io/v1beta1
+kind: Usage
+metadata:
+  name: {{ printf "%s-delete-deploy-before-cert" $upstream.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "usage-deploy-before-cert-%s" $upstream.name) }}
+spec:
+  replayDeletion: true
+  of:
+    apiVersion: {{ $objectAPI }}
+    kind: Object
+    resourceRef:
+      name: {{ $upstream.certificateResourceName }}
+  by:
+    apiVersion: {{ $objectAPI }}
+    kind: Object
+    resourceRef:
+      name: {{ $deployName }}
+{{- end }}
+
+{{- if and $deployReady (get $readyMap (printf "distribution-config-%s" $upstream.name) | default false) }}
+---
+apiVersion: protection.crossplane.io/v1beta1
+kind: Usage
+metadata:
+  name: {{ printf "%s-delete-deploy-before-config" $upstream.resourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "usage-deploy-before-config-%s" $upstream.name) }}
+spec:
+  replayDeletion: true
+  of:
+    apiVersion: {{ $objectAPI }}
+    kind: Object
+    resourceRef:
+      name: {{ $upstream.configResourceName }}
+  by:
+    apiVersion: {{ $objectAPI }}
+    kind: Object
+    resourceRef:
+      name: {{ $deployName }}
+{{- end }}
+{{- end }}
+{{- end }}

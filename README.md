@@ -79,11 +79,23 @@ spec:
           enabled: true
 ```
 
-For `xpkg.crossplane.io`, the stack renders a Kubernetes Service similar to:
+For `xpkg.crossplane.io` with rewrite and no Gateway, ImageConfig points at kube DNS:
 
 ```text
-platform-registry-cache-dist-xpkg-crossplane.crossplane-system.svc.cluster.local:5000
+xpkg-crossplane.crossplane-system.svc.cluster.local
 ```
+
+That is HTTPS on 443 (SAN = the Service DNS). Leaf certs are issued by
+CertStack's `internal-ca` ClusterIssuer (`spec.distribution.tls.issuerRef`).
+This stack does not create a CA. Delete the RegistryCache before disabling
+CertStack `internalCA`. Mount that ClusterIssuer's CA Secret
+(`ca.crt`, cert-manager namespace) on the Crossplane pod so x509 verification
+succeeds. Crossplane always uses HTTPS; `http://…:5000` will not work for
+package pulls.
+
+In-cluster only: leave `gateway.enabled` false (the default) and do not publish
+the cache on ExternalDNS. Gateway exposure remains optional for a shared
+hostname + Istio TLS.
 
 ## Standard Upstreams
 
@@ -128,9 +140,17 @@ CNCF Distribution.
 
 ## Storage
 
-By default the stack creates one private S3 bucket named from account, region,
-and XR name. Set `spec.distribution.storage.bucketName` to choose an explicit
-bucket name, or set `createBucket: false` when the bucket is managed elsewhere.
+`spec.distribution.storage.type` is `s3` (default), `pvc`, or `emptyDir`.
+
+- **s3**: one private bucket (name from account/region/XR, or
+  `storage.bucketName`). PodIdentity is composed unless disabled.
+- **pvc**: one RWO PersistentVolumeClaim per upstream (`storage.pvc.size`,
+  optional `storageClassName`). No S3 bucket or PodIdentity. Prefer this when
+  the cache exists to survive GitHub/Upbound blips on a single-AZ cluster.
+- **emptyDir**: node-local, lost on reschedule. Do not use if the cache must
+  survive Karpenter drains.
+
+Set `createBucket: false` when type is `s3` and the bucket is managed elsewhere.
 
 Each upstream gets its own `rootdirectory` under the bucket:
 

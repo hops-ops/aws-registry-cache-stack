@@ -7,9 +7,12 @@
 {{- $distribution := $eff.distribution }}
 
 {{- $renderDistribution := and $distribution.enabled (gt (len $distribution.upstreams) 0) }}
-{{- $renderDistributionPodIdentity := and $renderDistribution $distribution.podIdentity.enabled }}
-{{- $renderDistributionBucket := and $renderDistribution $distribution.storage.createBucket }}
+{{- $renderDistributionPodIdentity := and $renderDistribution $distribution.podIdentity.enabled (eq $distribution.storage.type "s3") }}
+{{- $renderDistributionBucket := and $renderDistribution $distribution.storage.createBucket (eq $distribution.storage.type "s3") }}
 {{- $renderDistributionNamespace := and $renderDistribution $distribution.createNamespace }}
+{{- if and $renderDistribution (eq $distribution.storage.type "pvc") (gt ($distribution.replicas | int) 1) (eq $distribution.storage.pvc.accessMode "ReadWriteOnce") }}
+  {{- fail "spec.distribution.replicas must be 1 when storage.type is pvc and pvc.accessMode is ReadWriteOnce" }}
+{{- end }}
 
 {{- $distributionResourceName := trimAll "-" (trunc 63 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-distribution" $eff.name)) "-")) }}
 {{- $distributionUpstreams := list }}
@@ -19,8 +22,17 @@
 {{- $distributionGatewayRootRouteKeys := dict }}
 {{- range $upstream := $distribution.upstreams }}
   {{- $serviceSpec := $upstream.service | default dict }}
-  {{- $servicePort := $serviceSpec.port | default 5000 }}
-  {{- $baseName := trimAll "-" (trunc 45 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-dist-%s" $eff.name $upstream.name)) "-")) }}
+  {{- $tlsEnabled := $distribution.tls.enabled }}
+  {{- $defaultServicePort := 5000 }}
+  {{- if $tlsEnabled }}
+    {{- $defaultServicePort = 443 }}
+  {{- end }}
+  {{- $servicePort := $serviceSpec.port | default $defaultServicePort }}
+  {{- $k8sName := trimAll "-" (trunc 63 (regexReplaceAll "[^a-z0-9-]+" (lower ($serviceSpec.name | default $upstream.name)) "-")) }}
+  {{- if eq $k8sName "" }}
+    {{- fail (printf "spec.distribution.upstreams[%s] sanitized to an empty Service name; set service.name to a DNS label" $upstream.name) }}
+  {{- end }}
+  {{- $objectBaseName := trimAll "-" (trunc 45 (regexReplaceAll "[^a-z0-9-]+" (lower (printf "%s-%s" $eff.name $upstream.name)) "-")) }}
   {{- $defaultRemoteUrl := printf "https://%s" $upstream.sourceRegistry }}
   {{- if eq $upstream.sourceRegistry "xpkg.crossplane.io" }}
     {{- $defaultRemoteUrl = "https://ghcr.io" }}
@@ -80,30 +92,46 @@
       {{- $_ := set $distributionGatewayRootRouteKeys $rootRouteKey true }}
       {{- $distributionGatewayRootRoutes = append $distributionGatewayRootRoutes (dict
         "name" $upstream.name
-        "resourceName" (printf "%s-root" $baseName)
-        "httpRouteResourceName" (printf "%s-root-httproute" $baseName)
+        "resourceName" (printf "%s-root" $objectBaseName)
+        "httpRouteResourceName" (printf "%s-root-httproute" $objectBaseName)
         "hostname" $gatewayHostname
         "port" $gatewayPort
         "gatewayRef" $gatewayRef
-        "backendServiceName" $baseName
+        "backendServiceName" $k8sName
         "backendServicePort" $servicePort
         "labels" (mergeOverwrite (dict) $eff.labels (dict "hops.ops.com.ai/distribution-upstream" $upstream.name))
       ) }}
     {{- end }}
   {{- end }}
+  {{- $clusterRewriteHost := printf "%s.%s.svc.cluster.local" $k8sName $distribution.namespace }}
+  {{- if and $tlsEnabled (ne $servicePort 443) }}
+    {{- $clusterRewriteHost = printf "%s:%d" $clusterRewriteHost $servicePort }}
+  {{- end }}
+  {{- if and (not $tlsEnabled) (ne $servicePort 80) }}
+    {{- $clusterRewriteHost = printf "%s:%d" $clusterRewriteHost $servicePort }}
+  {{- end }}
   {{- $defaultRewritePrefix := $gatewayRegistryPrefix }}
+  {{- if and (eq $defaultRewritePrefix "") $tlsEnabled }}
+    {{- $defaultRewritePrefix = $clusterRewriteHost }}
+  {{- end }}
   {{- $rewritePrefix := $rewriteSpec.prefix | default $defaultRewritePrefix }}
+  {{- if and $rewriteEnabled (not $gatewayEnabled) (not $tlsEnabled) (eq ($rewriteSpec.prefix | default "") "") }}
+    {{- fail (printf "spec.distribution.upstreams[%s].rewrite requires TLS or rewrite.prefix when gateway exposure is disabled (Crossplane uses HTTPS)" $upstream.name) }}
+  {{- end }}
   {{- if and $rewriteEnabled (eq $rewritePrefix "") }}
     {{- fail (printf "spec.distribution.upstreams[%s].rewrite.prefix is required when rewrite.enabled is true unless gateway exposure is enabled" $upstream.name) }}
   {{- end }}
+  {{- $tlsSecretName := printf "%s-registry-tls" $k8sName }}
   {{- $distributionUpstreams = append $distributionUpstreams (dict
     "name" $upstream.name
-    "resourceName" $baseName
-    "configResourceName" (printf "%s-config" $baseName)
-    "deploymentResourceName" (printf "%s-deploy" $baseName)
-    "serviceResourceName" (printf "%s-service" $baseName)
-    "imageConfigResourceName" (printf "%s-imgcfg" $baseName)
-    "httpRouteResourceName" (printf "%s-httproute" $baseName)
+    "resourceName" $k8sName
+    "configResourceName" (printf "%s-config" $objectBaseName)
+    "deploymentResourceName" (printf "%s-deploy" $objectBaseName)
+    "serviceResourceName" (printf "%s-service" $objectBaseName)
+    "pvcResourceName" (printf "%s-pvc" $objectBaseName)
+    "certificateResourceName" (printf "%s-cert" $objectBaseName)
+    "imageConfigResourceName" (printf "%s-imgcfg" $objectBaseName)
+    "httpRouteResourceName" (printf "%s-httproute" $objectBaseName)
     "sourceRegistry" $upstream.sourceRegistry
     "matchPrefix" $matchPrefix
     "remoteUrl" $remoteUrl
@@ -111,9 +139,14 @@
     "rootDirectory" $rootDirectory
     "objectArn" $objectArn
     "service" (dict
-      "name" $baseName
+      "name" $k8sName
       "type" ($serviceSpec.type | default "ClusterIP")
       "port" $servicePort
+    )
+    "tls" (dict
+      "enabled" $tlsEnabled
+      "secretName" $tlsSecretName
+      "dnsNames" (list (printf "%s.%s.svc" $k8sName $distribution.namespace) (printf "%s.%s.svc.cluster.local" $k8sName $distribution.namespace))
     )
     "gateway" (dict
       "enabled" $gatewayEnabled
@@ -122,13 +155,13 @@
       "pathPrefix" $gatewayPathPrefix
       "routePathPrefix" $gatewayRoutePathPrefix
       "rewritePathPrefix" "/v2"
-      "httpRouteName" $baseName
+      "httpRouteName" $k8sName
       "gatewayRef" $gatewayRef
     )
     "rewrite" (dict
       "enabled" $rewriteEnabled
       "prefix" $rewritePrefix
-      "imageConfigName" ($rewriteSpec.imageConfigName | default $baseName)
+      "imageConfigName" ($rewriteSpec.imageConfigName | default $k8sName)
     )
     "resources" ($upstream.resources | default dict)
     "labels" (mergeOverwrite (dict) $eff.labels (dict "hops.ops.com.ai/distribution-upstream" $upstream.name))

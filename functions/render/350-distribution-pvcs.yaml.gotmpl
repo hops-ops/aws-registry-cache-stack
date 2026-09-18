@@ -1,0 +1,40 @@
+# code: language=yaml
+#
+# Filesystem cache volumes. One RWO PVC per upstream.
+#
+
+{{- $cache := $state.registryCache }}
+{{- if and $cache.distribution.render (eq $cache.distribution.storage.type "pvc") }}
+{{- range $upstream := $cache.distribution.upstreams }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: {{ $upstream.pvcResourceName }}
+  annotations:
+    {{ setResourceNameAnnotation (printf "distribution-pvc-%s" $upstream.name) }}
+  labels: {{ $upstream.labels | toJson }}
+spec:
+  managementPolicies: {{ $cache.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: {{ $upstream.resourceName }}
+        namespace: {{ $cache.distribution.namespace }}
+        labels: {{ $upstream.labels | toJson }}
+      spec:
+        accessModes:
+          - {{ $cache.distribution.storage.pvc.accessMode | quote }}
+        {{- if $cache.distribution.storage.pvc.storageClassName }}
+        storageClassName: {{ $cache.distribution.storage.pvc.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $cache.distribution.storage.pvc.size | quote }}
+  providerConfigRef:
+    name: {{ $cache.providerConfigRefs.kubernetes.name }}
+    kind: {{ $cache.providerConfigRefs.kubernetes.kind }}
+{{- end }}
+{{- end }}

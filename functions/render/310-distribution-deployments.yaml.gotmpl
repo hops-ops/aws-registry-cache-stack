@@ -51,18 +51,29 @@ spec:
                 args:
                   - serve
                   - /etc/distribution/config.yml
+                {{- if eq $cache.distribution.storage.type "s3" }}
                 env:
                   - name: AWS_REGION
                     value: {{ $cache.region | quote }}
                   - name: AWS_DEFAULT_REGION
                     value: {{ $cache.region | quote }}
+                {{- end }}
                 ports:
                   - name: registry
-                    containerPort: 5000
+                    containerPort: {{ if $upstream.tls.enabled }}443{{ else }}5000{{ end }}
                 volumeMounts:
                   - name: config
                     mountPath: /etc/distribution
                     readOnly: true
+                  {{- if ne $cache.distribution.storage.type "s3" }}
+                  - name: data
+                    mountPath: /var/lib/registry
+                  {{- end }}
+                  {{- if $upstream.tls.enabled }}
+                  - name: tls
+                    mountPath: /certs
+                    readOnly: true
+                  {{- end }}
                 {{- with $upstream.resources }}
                 resources:
                   {{ toYaml . | nindent 18 }}
@@ -71,6 +82,19 @@ spec:
               - name: config
                 configMap:
                   name: {{ $upstream.resourceName }}
+              {{- if eq $cache.distribution.storage.type "pvc" }}
+              - name: data
+                persistentVolumeClaim:
+                  claimName: {{ $upstream.resourceName }}
+              {{- else if eq $cache.distribution.storage.type "emptyDir" }}
+              - name: data
+                emptyDir: {}
+              {{- end }}
+              {{- if $upstream.tls.enabled }}
+              - name: tls
+                secret:
+                  secretName: {{ $upstream.tls.secretName }}
+              {{- end }}
   providerConfigRef:
     name: {{ $cache.providerConfigRefs.kubernetes.name }}
     kind: {{ $cache.providerConfigRefs.kubernetes.kind }}

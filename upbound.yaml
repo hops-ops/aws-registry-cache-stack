@@ -20,7 +20,7 @@ spec:
     kind: Configuration
     package: ghcr.io/hops-ops/aws-pod-identity
     version: '^v0'
-  description: S3-backed CNCF Distribution proxy caches for OCI registries.
+  description: CNCF Distribution proxy caches for OCI registries (S3 or PVC).
   license: Apache-2.0
   maintainer: Patrick Lee Scott <pat@patscott.io>
   readme: |

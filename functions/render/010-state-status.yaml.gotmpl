@@ -25,6 +25,7 @@
   {{- if not (get $readyMap "distribution-service-account" | default false) }}
     {{- $distributionReady = false }}
   {{- end }}
+
   {{- if and $cache.distribution.renderPodIdentity (not (get $readyMap "distribution-pod-identity" | default false)) }}
     {{- $distributionReady = false }}
   {{- end }}
@@ -43,6 +44,12 @@
       {{- if not (get $readyMap $key | default false) }}
         {{- $upstreamReady = false }}
       {{- end }}
+    {{- end }}
+    {{- if and (eq $cache.distribution.storage.type "pvc") (not (get $readyMap (printf "distribution-pvc-%s" $upstream.name) | default false)) }}
+      {{- $upstreamReady = false }}
+    {{- end }}
+    {{- if and $upstream.tls.enabled (not (get $readyMap (printf "distribution-certificate-%s" $upstream.name) | default false)) }}
+      {{- $upstreamReady = false }}
     {{- end }}
     {{- if and $upstream.gateway.enabled (not (get $readyMap (printf "distribution-httproute-%s" $upstream.name) | default false)) }}
       {{- $upstreamReady = false }}
@@ -75,6 +82,11 @@
     "ready" $distributionReady
     "namespace" $cache.distribution.namespace
     "bucketName" $cache.distribution.storage.bucketName
+    "storageType" $cache.distribution.storage.type
+    "tls" (dict
+      "enabled" $cache.distribution.tls.enabled
+      "issuerName" $cache.distribution.tls.issuerRef.name
+    )
     "upstreams" $distributionUpstreams
   )
 ) }}

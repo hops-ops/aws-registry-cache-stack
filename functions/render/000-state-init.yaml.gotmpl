@@ -57,19 +57,31 @@
 {{- $distributionServiceAccountName := $distributionServiceAccountSpec.name | default (printf "%s-distribution" $name) }}
 {{- $distributionServiceAccountLabels := mergeOverwrite (dict) $labels ($distributionServiceAccountSpec.labels | default dict) }}
 
+{{- $distributionStorageSpec := $distributionSpec.storage | default dict }}
+{{- $distributionStorageType := $distributionStorageSpec.type | default "s3" }}
+
 {{- $distributionPodIdentitySpec := $distributionSpec.podIdentity | default dict }}
 {{- $distributionPodIdentityEnabled := true }}
 {{- if hasKey $distributionPodIdentitySpec "enabled" }}
   {{- $distributionPodIdentityEnabled = $distributionPodIdentitySpec.enabled }}
 {{- end }}
+{{- if ne $distributionStorageType "s3" }}
+  {{- $distributionPodIdentityEnabled = false }}
+{{- end }}
 
-{{- $distributionStorageSpec := $distributionSpec.storage | default dict }}
+{{- $distributionPvcSpec := $distributionStorageSpec.pvc | default dict }}
+{{- $distributionPvcSize := $distributionPvcSpec.size | default "20Gi" }}
+{{- $distributionPvcStorageClassName := $distributionPvcSpec.storageClassName | default "" }}
+{{- $distributionPvcAccessMode := $distributionPvcSpec.accessMode | default "ReadWriteOnce" }}
 {{- $defaultDistributionBucket := regexReplaceAll "[^a-z0-9-]+" (lower (printf "hops-%s-%s-%s-registry-cache" $accountId $region $name)) "-" }}
 {{- $defaultDistributionBucket = trimAll "-" (trunc 63 $defaultDistributionBucket) }}
 {{- $distributionBucketName := $distributionStorageSpec.bucketName | default $defaultDistributionBucket }}
 {{- $distributionCreateBucket := true }}
 {{- if hasKey $distributionStorageSpec "createBucket" }}
   {{- $distributionCreateBucket = $distributionStorageSpec.createBucket }}
+{{- end }}
+{{- if ne $distributionStorageType "s3" }}
+  {{- $distributionCreateBucket = false }}
 {{- end }}
 {{- $distributionRootPrefix := trimAll "/" ($distributionStorageSpec.rootPrefix | default "distribution") }}
 {{- $distributionStorageEncrypt := true }}
@@ -112,6 +124,18 @@
   "sectionNames" $distributionGatewayRefSectionNames
 }}
 
+{{- $distributionTlsSpec := $distributionSpec.tls | default dict }}
+{{- $distributionTlsEnabled := not $distributionGatewayEnabled }}
+{{- if hasKey $distributionTlsSpec "enabled" }}
+  {{- $distributionTlsEnabled = $distributionTlsSpec.enabled }}
+{{- end }}
+{{- $distributionTlsIssuerRefSpec := $distributionTlsSpec.issuerRef | default dict }}
+{{- $distributionTlsIssuerRef := dict
+  "name" ($distributionTlsIssuerRefSpec.name | default "internal-ca")
+  "kind" ($distributionTlsIssuerRefSpec.kind | default "ClusterIssuer")
+  "group" ($distributionTlsIssuerRefSpec.group | default "cert-manager.io")
+}}
+
 # renovate: datasource=docker depName=library/registry registryUrl=https://index.docker.io
 {{- $distributionImage := $distributionSpec.image | default "registry:3" }}
 
@@ -152,9 +176,15 @@
           "permissionsBoundaryArn" ($distributionPodIdentitySpec.permissionsBoundaryArn | default "")
         )
         "storage" (dict
+          "type" $distributionStorageType
           "bucketName" $distributionBucketName
           "createBucket" $distributionCreateBucket
           "rootPrefix" $distributionRootPrefix
+          "pvc" (dict
+            "size" $distributionPvcSize
+            "storageClassName" $distributionPvcStorageClassName
+            "accessMode" $distributionPvcAccessMode
+          )
           "encrypt" $distributionStorageEncrypt
           "secure" $distributionStorageSecure
           "v4Auth" $distributionStorageV4Auth
@@ -164,6 +194,10 @@
             "enabled" $distributionLifecycleEnabled
             "abortIncompleteMultipartUploadDays" $distributionAbortMultipartDays
           )
+        )
+        "tls" (dict
+          "enabled" $distributionTlsEnabled
+          "issuerRef" $distributionTlsIssuerRef
         )
         "gateway" (dict
           "enabled" $distributionGatewayEnabled

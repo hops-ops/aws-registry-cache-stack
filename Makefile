@@ -14,7 +14,8 @@ E2E_TESTS := $(wildcard tests/e2etest-*)
 EXAMPLES := \
     examples/registrycaches/minimal.yaml:: \
     examples/registrycaches/crossplane-packages.yaml:: \
-    examples/registrycaches/standard.yaml::
+    examples/registrycaches/standard.yaml:: \
+    examples/registrycaches/incluster-pvc.yaml::
 
 clean:
 	rm -rf _output
